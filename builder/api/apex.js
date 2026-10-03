@@ -87,6 +87,7 @@ async function start(req, res) {
   const { contact, deal } = await A.createProspect({ firstname, lastname, email });
   const name = `${firstname} ${lastname}`.trim();
   try {
+    await A.ensureConferencing(PAL_ID);
     const convo = await A.createConversation({
       pal_id: PAL_ID,
       face_id: FACE_ID,

@@ -273,6 +273,26 @@ export async function createConversation(body) {
   if (!r.ok) throw new Error(`Tavus create conversation failed (${r.status}): ${JSON.stringify(j)}`);
   return j;
 }
+/* Joining Zoom/Meet/Teams via meeting_url requires the PAL to have a
+   conferencing identity (layers.conferencing.username). Set it once if missing. */
+export async function ensureConferencing(palId) {
+  const r = await fetch(`${TAVUS}/pals/${palId}`, { headers: tavusHeaders() });
+  const pal = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`Tavus get PAL failed (${r.status}): ${JSON.stringify(pal)}`);
+  if (pal?.layers?.conferencing?.username) return pal.layers.conferencing.username;
+  const hasLayer = !!pal?.layers?.conferencing;
+  let lastErr = "";
+  for (const username of ["apex-portfolio-manager", `apex-pm-${palId.slice(-6)}`, `apex-${Date.now().toString(36)}`]) {
+    const ops = hasLayer
+      ? [{ op: "add", path: "/layers/conferencing/username", value: username }]
+      : [{ op: "add", path: "/layers/conferencing", value: { username } }];
+    const p = await fetch(`${TAVUS}/pals/${palId}`, { method: "PATCH", headers: tavusHeaders(), body: JSON.stringify(ops) });
+    if (p.ok) return username;
+    lastErr = `${p.status}: ${await p.text()}`;
+  }
+  throw new Error(`Could not give the avatar a meeting identity (${lastErr})`);
+}
+
 export async function endConversation(id) {
   const r = await fetch(`${TAVUS}/conversations/${id}/end`, { method: "POST", headers: tavusHeaders() });
   if (!r.ok && r.status !== 404) throw new Error(`Tavus end conversation failed (${r.status}): ${await r.text()}`);
