@@ -1,7 +1,18 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    { "source": "/d/:slug", "destination": "/index.html" }
+    {
+      "source": "/apex",
+      "destination": "/apex/index.html"
+    },
+    {
+      "source": "/apex/:path*",
+      "destination": "/apex/index.html"
+    },
+    {
+      "source": "/d/:slug",
+      "destination": "/index.html"
+    }
   ],
   "functions": {
     "api/generate-persona.js": {
@@ -9,6 +20,9 @@
     },
     "api/brand-theme.js": {
       "maxDuration": 60
+    },
+    "api/apex.js": {
+      "maxDuration": 30
     }
   }
 }
