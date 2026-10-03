@@ -345,16 +345,30 @@ export async function createCalendarEvent({ summary, description, start, end, tz
 
 // ---- tool handlers (what the avatar does mid-call) --------------------------
 
+/* What the avatar hears back. These tools resolve with generate_response, so the
+   reply is always spoken (a silent fire-and-forget tool left dead air). The same
+   lines are returned for calls not started from the console, minus the CRM write. */
+export const GUIDE = {
+  log_objection: "Noted. Now answer the prospect's concern(s) directly, warmly and concisely, following your objection guidance.",
+  record_discovery_answers: "Saved. Briefly reflect their goals back and connect them to the Premier Growth Portfolio, then move toward booking the next meeting.",
+  complete_discovery_call: "Done. Close warmly: confirm you'll see them at the booked time.",
+  request_advisor_handoff: "Handoff created. Tell them a licensed advisor will follow up with them directly, then ask if there's anything else you can help with today.",
+};
+
 const str = (v) => (typeof v === "string" ? v.trim() : v == null ? "" : String(v));
 
 export async function runTool(name, args, s, toolCallId) {
   switch (name) {
     case "log_objection": {
-      const category = str(args.category) || "other";
-      const detail = str(args.detail) || "(no detail captured)";
-      await logObjection(s.dealId, category, detail);
-      await feed({ type: "tool", title: `Objection logged: ${categoryLabel(category)}`, detail, conversationId: s.conversationId });
-      return "Objection logged to CRM.";
+      // Accepts a batch (concerns[]) so several objections in one breath are one call.
+      const items = Array.isArray(args.concerns) && args.concerns.length ? args.concerns : [{ category: args.category, detail: args.detail }];
+      for (const it of items) {
+        const category = str(it?.category) || "other";
+        const detail = str(it?.detail) || "(no detail captured)";
+        await logObjection(s.dealId, category, detail);
+        await feed({ type: "tool", title: `Objection logged: ${categoryLabel(category)}`, detail, conversationId: s.conversationId });
+      }
+      return GUIDE.log_objection;
     }
 
     case "record_discovery_answers": {
@@ -366,7 +380,7 @@ export async function runTool(name, args, s, toolCallId) {
       await updateProps(s.dealId, props);
       const filled = Object.entries(props).filter(([, v]) => v);
       await feed({ type: "tool", title: `Discovery answers saved (${filled.length}/6)`, detail: filled.map(([k, v]) => `${k}: ${v}`).join("\n"), conversationId: s.conversationId });
-      return "Discovery answers saved.";
+      return GUIDE.record_discovery_answers;
     }
 
     case "book_next_meeting": {
@@ -420,7 +434,7 @@ export async function runTool(name, args, s, toolCallId) {
         ["discovery", "ai-call"],
       );
       await feed({ type: "tool", title: 'Deal moved to "Discovery Call Completed"', detail: summary, conversationId: s.conversationId });
-      return "Deal stage updated.";
+      return GUIDE.complete_discovery_call;
     }
 
     case "request_advisor_handoff": {
@@ -430,7 +444,7 @@ export async function runTool(name, args, s, toolCallId) {
       await addTask(s.dealId, "Human advisor follow-up requested", reason, due.toISOString());
       await addNote(s.dealId, "Advisor handoff requested", reason, ["handoff"]);
       await feed({ type: "tool", title: "Advisor handoff requested", detail: reason, conversationId: s.conversationId });
-      return "A licensed advisor follow-up task was created for tomorrow morning.";
+      return GUIDE.request_advisor_handoff;
     }
 
     default:

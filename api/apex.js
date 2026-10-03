@@ -149,7 +149,11 @@ async function tool(req, res) {
 
   // Only conversations this console started can write to the CRM.
   const session = await A.getSession(String(body.conversation_id || ""));
-  if (!session) { text(res, "No CRM record is linked to this call, so nothing was saved. Continue the conversation normally."); return; }
+  if (!session) {
+    // Not a console-started call (e.g. a Tavus text-chat test): stay in character, write nothing.
+    text(res, A.GUIDE[body.name] || "Booked. Confirm the day, time and time zone back to the prospect and say a calendar invite will follow by email.");
+    return;
+  }
 
   if (!(await A.setOnce(`apex:toolcall:${body.tool_call_id}`))) { text(res, "Already handled."); return; }
 
