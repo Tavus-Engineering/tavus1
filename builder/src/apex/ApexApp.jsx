@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { CVIProvider } from "../components/cvi/components/cvi-provider";
+import { Conversation } from "../components/cvi/components/conversation";
 
 /* Apex Wealth demo — Live Call Console + CRM sandbox, served at /apex.
    Backend: /api/apex?op=… (api/apex.js). Signed-in builder session required. */
@@ -88,6 +90,7 @@ export default function ApexApp() {
     );
   }
 
+  if (path === "/apex/room") return <Room {...app} />;
   if (path === "/apex/crm") return <DealsBoard {...app} />;
   if (path === "/apex/crm/tasks") return <Tasks {...app} />;
   const m = path.match(/^\/apex\/crm\/deals\/([^/]+)$/);
@@ -98,7 +101,7 @@ export default function ApexApp() {
 // ---- Console ------------------------------------------------------------------
 
 function Console({ state, refresh }) {
-  const [form, setForm] = useState({ meetingUrl: "", firstname: "Tim", lastname: "", email: "tim@tavus.io", firm: "apex" });
+  const [form, setForm] = useState({ meetingUrl: "", firstname: "Tim", lastname: "", email: "tim@tavus.io", firm: "apex", mode: "room" });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -115,6 +118,7 @@ function Console({ state, refresh }) {
       const j = await r.json().catch(() => ({}));
       if (!r.ok) setMsg(j.error || `Error ${r.status}`);
       await refresh();
+      if (r.ok && op === "start" && j.conversationUrl) go("/apex/room");
     } finally {
       setBusy(false);
     }
@@ -144,10 +148,23 @@ function Console({ state, refresh }) {
               </div>
             </div>
             <div>
-              <label>Zoom / Meet / Teams link</label>
-              <input placeholder="https://us02web.zoom.us/j/123456789?pwd=..." value={form.meetingUrl}
-                onChange={(e) => setForm({ ...form, meetingUrl: e.target.value.trim() })} />
+              <label>Where</label>
+              <div className="seg">
+                <button className={form.mode === "room" ? "on" : ""} onClick={() => setForm({ ...form, mode: "room" })}>
+                  <b>Standalone</b><span>Opens a call page in this browser</span>
+                </button>
+                <button className={form.mode === "zoom" ? "on" : ""} onClick={() => setForm({ ...form, mode: "zoom" })}>
+                  <b>Zoom / Meet / Teams</b><span>Avatar joins your meeting link</span>
+                </button>
+              </div>
             </div>
+            {form.mode === "zoom" && (
+              <div>
+                <label>Zoom / Meet / Teams link</label>
+                <input placeholder="https://us02web.zoom.us/j/123456789?pwd=..." value={form.meetingUrl}
+                  onChange={(e) => setForm({ ...form, meetingUrl: e.target.value.trim() })} />
+              </div>
+            )}
             <div className="row" style={{ flexWrap: "nowrap" }}>
               <div style={{ flex: 1 }}>
                 <label>Prospect first name</label>
@@ -167,6 +184,7 @@ function Console({ state, refresh }) {
                 Send {form.firm === "optimize" ? "Optimize" : "Apex"} in
               </button>
               <button className="danger" disabled={busy || !active} onClick={() => call("end")}>End call</button>
+              {active?.mode === "room" && active.status !== "ended" && <A href="/apex/room">Rejoin call page →</A>}
             </div>
             {msg && <div className="pill bad" style={{ whiteSpace: "normal" }}>{msg}</div>}
           </section>
@@ -455,5 +473,69 @@ function Tasks({ state }) {
         ))}
       </div>
     </CrmShell>
+  );
+}
+
+// ---- Standalone call page -------------------------------------------------------
+// Tavus-hosted room rendered with the builder's vendored CVI call UI: the avatar's
+// face, and its presentation (brochure pages) as the main view when it shares.
+
+function Room({ state, refresh }) {
+  const active = state?.active;
+  const [showFeed, setShowFeed] = useState(true);
+  const firmLabel = active ? state.config?.firms?.[active.firm]?.label || "Apex" : "";
+
+  const leave = useCallback(async () => {
+    await fetch(API("end"), { method: "POST", credentials: "same-origin" }).catch(() => {});
+    await refresh();
+    go("/apex");
+  }, [refresh]);
+
+  if (!state) return <div className="wrap muted">Loading…</div>;
+  if (!active?.conversationUrl || active.mode !== "room") {
+    return (
+      <>
+        <TopBar section="console" />
+        <div className="wrap"><div className="card stack" style={{ maxWidth: 520 }}>
+          <h2>No standalone call is live</h2>
+          <A href="/apex">Back to the console</A>
+        </div></div>
+      </>
+    );
+  }
+
+  const feed = (state.feed ?? []).filter((e) => e.conversationId === active.conversationId).slice().reverse();
+  return (
+    <div className="room">
+      <header className="topbar">
+        <div className="logo">{firmLabel.toUpperCase()} <span>· {active.prospectName}</span></div>
+        <nav>
+          <a href="#" onClick={(e) => { e.preventDefault(); setShowFeed((v) => !v); }}>{showFeed ? "Hide" : "Show"} AI activity</a>
+          <A href="/apex/crm" target="_blank">CRM ↗</A>
+        </nav>
+      </header>
+      <div className={`room-body ${showFeed ? "with-feed" : ""}`}>
+        <div className="room-stage">
+          <CVIProvider>
+            <Conversation conversationUrl={active.conversationUrl} onLeave={leave} />
+          </CVIProvider>
+        </div>
+        {showFeed && (
+          <aside className="room-feed">
+            <div className="muted" style={{ fontWeight: 600, marginBottom: 8 }}>What the AI did</div>
+            <div className="feed">
+              {feed.length === 0 && <div className="muted">Actions appear here as the avatar takes them.</div>}
+              {feed.map((e, i) => (
+                <div key={i} className={`ev ${e.type}`}>
+                  <div className="t">{fmtTime(e.at)}</div>
+                  <div className="title">{e.title}</div>
+                  {e.detail && <pre>{e.detail}</pre>}
+                </div>
+              ))}
+            </div>
+          </aside>
+        )}
+      </div>
+    </div>
   );
 }

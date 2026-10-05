@@ -77,11 +77,12 @@ async function state(req, res) {
 
 async function start(req, res) {
   if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
-  const { meetingUrl, firstname, lastname = "", email, firm: firmKey = "apex" } = req.body || {};
+  const { meetingUrl, firstname, lastname = "", email, firm: firmKey = "apex", mode = "room" } = req.body || {};
+  const inZoom = mode === "zoom";
   const firm = A.FIRMS[firmKey];
   if (!firm) { res.status(400).json({ error: `Unknown firm "${firmKey}"` }); return; }
   if (!firm.palId) { res.status(500).json({ error: `No avatar configured for ${firm.label}` }); return; }
-  if (!meetingUrl || !MEETING_RE.test(meetingUrl)) { res.status(400).json({ error: "Paste a Zoom, Google Meet or Teams link" }); return; }
+  if (inZoom && (!meetingUrl || !MEETING_RE.test(meetingUrl))) { res.status(400).json({ error: "Paste a Zoom, Google Meet or Teams link" }); return; }
   if (!firstname || !email) { res.status(400).json({ error: "Prospect first name and email are required" }); return; }
   if (await A.getActiveId()) { res.status(409).json({ error: "A call is already live. End it first." }); return; }
 
@@ -89,11 +90,12 @@ async function start(req, res) {
   const { contact, deal } = await A.createProspect({ firstname, lastname, email, firm: firmKey });
   const name = `${firstname} ${lastname}`.trim();
   try {
-    await A.ensureConferencing(firm.palId);
+    if (inZoom) await A.ensureConferencing(firm.palId);
     const convo = await A.createConversation({
       pal_id: firm.palId,
       face_id: firm.faceId,
-      meeting_url: meetingUrl,
+      // Standalone = Tavus-hosted room opened at /apex/room; Zoom = PAL joins the meeting link.
+      ...(inZoom ? { meeting_url: meetingUrl } : {}),
       conversation_name: `${firm.label} - ${name}`,
       callback_url: `${origin(req)}/api/apex?op=webhook`,
       custom_greeting: firm.greeting(firstname),
@@ -103,12 +105,18 @@ async function start(req, res) {
       properties: { max_call_duration: firmKey === "optimize" ? 3600 : 2700, participant_left_timeout: 60 },
     });
     await A.saveSession({
-      conversationId: convo.conversation_id, meetingUrl, dealId: deal.id, contactId: contact.id,
+      conversationId: convo.conversation_id, conversationUrl: convo.conversation_url, mode: inZoom ? "zoom" : "room",
+      meetingUrl: inZoom ? meetingUrl : null, dealId: deal.id, contactId: contact.id,
       prospectName: name, prospectEmail: email, firm: firmKey, startedAt: new Date().toISOString(), status: "starting",
     });
     await A.setActiveId(convo.conversation_id);
-    await A.feed({ type: "system", title: `${firm.label} avatar is joining the meeting`, detail: meetingUrl, conversationId: convo.conversation_id });
-    res.status(200).json({ conversationId: convo.conversation_id, dealId: deal.id });
+    await A.feed({
+      type: "system",
+      title: inZoom ? `${firm.label} avatar is joining the meeting` : `${firm.label} room is ready`,
+      detail: inZoom ? meetingUrl : "Standalone call opened in the browser",
+      conversationId: convo.conversation_id,
+    });
+    res.status(200).json({ conversationId: convo.conversation_id, conversationUrl: inZoom ? null : convo.conversation_url, dealId: deal.id });
   } catch (e) {
     await A.feed({ type: "error", title: "Could not start conversation", detail: e.message });
     res.status(502).json({ error: e.message });
