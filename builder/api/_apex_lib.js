@@ -140,8 +140,51 @@ export function resolveSlot({ date, weekday, time, tz = DEFAULT_TZ, now = new Da
 export const formatSlot = (date, tz = DEFAULT_TZ) =>
   new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" }).format(date);
 
+export const nowTimeLabel = (tz = DEFAULT_TZ) =>
+  new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", minute: "2-digit" }).format(new Date());
+
 export const todayLabel = (tz = DEFAULT_TZ) =>
   new Intl.DateTimeFormat("en-US", { timeZone: tz, weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(new Date());
+
+// ---- firms --------------------------------------------------------------------
+// Two avatars share this console + CRM: the Apex discovery call (scored demo) and
+// the Optimize brochure walkthrough + full initial-meeting script.
+
+export const FIRMS = {
+  apex: {
+    label: "Apex Wealth Advisory",
+    palId: process.env.APEX_PAL_ID || "p6e28aea25fd",
+    faceId: process.env.APEX_FACE_ID || "re3fd4adeafd",
+    product: "Premier Growth Portfolio",
+    greeting: (first) =>
+      `Hi ${first}, great to meet you! I'm the Apex Portfolio Manager here at Apex Wealth Advisory. ` +
+      `Thanks so much for making the time today. How's your day going so far?`,
+    meetingTitle: "Apex Wealth Advisory - Portfolio Design & Risk Assessment Presentation",
+    meetingDesc:
+      "Meeting 2 of 3 with Apex Portfolio Manager.\n\n" +
+      "We'll walk through a proposed Premier Growth Portfolio allocation and risk assessment based on the goals you shared on your discovery call.\n\n" +
+      "Past performance (8-10% historical returns) does not guarantee future results.",
+    minutes: 45,
+    taskTitle: "Follow-up: Portfolio Design & Risk Assessment Presentation",
+    taskBody: (name) => `Present a proposed allocation for ${name} based on discovery answers. Address logged objections (fees, guarantees, recession risk).`,
+  },
+  optimize: {
+    label: "Optimize Wealth Management",
+    palId: process.env.OPTIMIZE_PAL_ID || "pb40abfd8546",
+    faceId: process.env.OPTIMIZE_FACE_ID || "re3fd4adeafd",
+    product: "Optimize Private Client - Comprehensive Financial Plan",
+    greeting: (first) => `Hi ${first}, it's Victor from Optimize Wealth Management. It's great to meet you.`,
+    meetingTitle: "Optimize Wealth Management - Comprehensive Financial Plan & Investment Strategy Review",
+    meetingDesc:
+      "Follow-up meeting with your Optimize Senior Portfolio Manager.\n\n" +
+      "We'll walk through your Comprehensive Financial Plan and our recommended initial investment strategy, based on the goals you shared in our first meeting.\n\n" +
+      "Past performance is not indicative of future results.",
+    minutes: 60,
+    taskTitle: "Follow-up: Comprehensive Financial Plan & Investment Strategy Review",
+    taskBody: (name) => `Build ${name}'s Comprehensive Financial Plan and initial investment strategy from the discovery profile, and present it at this meeting.`,
+  },
+};
+export const firmOf = (s) => FIRMS[s?.firm] || FIRMS.apex;
 
 // ---- CRM sandbox (modeled on HubSpot contacts / deals / engagements) -------
 // Deal writes are append-only patches + activity lists, so parallel tool calls
@@ -213,13 +256,15 @@ export const addTask = (dealId, title, body, dueAt, source = "ai") =>
 export const addMeeting = (dealId, m, source = "ai") =>
   addActivity(dealId, { kind: "meeting", id: newId("mtg"), at: now(), source, ...m });
 
-export async function createProspect({ firstname, lastname = "", email, amount = 250000 }) {
+export async function createProspect({ firstname, lastname = "", email, amount = 250000, firm = "apex" }) {
+  const f = FIRMS[firm] || FIRMS.apex;
   const contact = { id: newId("ct"), firstname, lastname, email };
   const deal = {
     id: newId("deal"),
-    name: `${`${firstname} ${lastname}`.trim()} - Premier Growth Portfolio`,
-    contactId: contact.id, amount, stage: "discovery_scheduled", product: "Premier Growth Portfolio",
-    owner: "Apex Portfolio Manager (AI)", createdAt: now(), updatedAt: now(), props: {},
+    name: `${`${firstname} ${lastname}`.trim()} - ${f.product}`,
+    contactId: contact.id, amount, stage: "discovery_scheduled", product: f.product, firm,
+    owner: firm === "optimize" ? "Optimize Senior Portfolio Manager (AI)" : "Apex Portfolio Manager (AI)",
+    createdAt: now(), updatedAt: now(), props: {},
   };
   await setJSON(K.contact(contact.id), contact);
   await setJSON(K.deal(deal.id), deal);
@@ -368,9 +413,45 @@ export async function createCalendarEvent({ summary, description, start, end, tz
 /* What the avatar hears back. These tools resolve with generate_response, so the
    reply is always spoken (a silent fire-and-forget tool left dead air). The same
    lines are returned for calls not started from the console, minus the CRM write. */
+/* Optimize initial-meeting profile (mirrors the script's discovery sections). */
+export const PROFILE_FIELDS = {
+  retirement_target: "Financial independence target",
+  retirement_lifestyle: "Retirement lifestyle",
+  major_purchases: "Major purchases",
+  plan_type: "Plan type (joint / individual)",
+  date_of_birth: "Date of birth",
+  marital_status: "Marital status",
+  spouse_name: "Spouse name",
+  spouse_date_of_birth: "Spouse date of birth",
+  income: "Income (base + bonus)",
+  spouse_income: "Spouse income",
+  children: "Children & ages",
+  phone: "Best phone",
+  email_on_file: "Best email",
+  rrsp: "RRSP value & contributions",
+  employer_match: "Employer RRSP/pension match",
+  spouse_rrsp: "Spouse RRSP",
+  other_registered: "Other registered (spousal RRSP / LIRA)",
+  tfsa: "TFSA value & contributions",
+  non_registered: "Non-registered investments",
+  pension: "Pension (DB / DC details)",
+  government_benefits: "CPP / OAS",
+  resp: "RESP",
+  home_value: "Home value",
+  mortgage: "Mortgage outstanding",
+  other_properties: "Other properties",
+  investor_profile: "Investor profile",
+  time_horizon: "Investing time horizon",
+  liquidity_needs: "Liquidity requirements",
+  primary_objective: "Primary investment objective",
+  review_cadence: "Agreed review cadence",
+  ideal_relationship: "Wants from an advisory relationship",
+};
+
 export const GUIDE = {
   log_objection: "Noted. Now answer the prospect's concern(s) directly, warmly and concisely, following your objection guidance.",
   record_discovery_answers: "Saved. Briefly reflect their goals back and connect them to the Premier Growth Portfolio, then move toward booking the next meeting.",
+  record_client_profile: "Saved. Continue with the next part of the meeting script.",
   complete_discovery_call: "Done. Close warmly: confirm you'll see them at the booked time.",
   request_advisor_handoff: "Handoff created. Tell them a licensed advisor will follow up with them directly, then ask if there's anything else you can help with today.",
 };
@@ -403,12 +484,23 @@ export async function runTool(name, args, s, toolCallId) {
       return GUIDE.record_discovery_answers;
     }
 
+    case "record_client_profile": {
+      // Optimize discovery: called once per script section, so fields arrive in batches.
+      const props = Object.fromEntries(Object.entries(args).filter(([k]) => PROFILE_FIELDS[k]).map(([k, v]) => [k, str(v)]));
+      await updateProps(s.dealId, props);
+      const filled = Object.entries(props).filter(([, v]) => v);
+      await feed({ type: "tool", title: `Client profile updated (${filled.length} field${filled.length === 1 ? "" : "s"})`, detail: filled.map(([k, v]) => `${PROFILE_FIELDS[k]}: ${v}`).join("\n"), conversationId: s.conversationId });
+      return GUIDE.record_client_profile;
+    }
+
+    case "book_plan_review":
     case "book_next_meeting": {
+      const firm = firmOf(s);
       const tz = str(args.timezone) || DEFAULT_TZ;
       const slot = resolveSlot({ date: str(args.date), weekday: str(args.weekday), time: str(args.time) || "15:00", tz });
-      const end = new Date(slot.start.getTime() + 45 * 60_000);
+      const end = new Date(slot.start.getTime() + firm.minutes * 60_000);
       const attendee = s.prospectEmail;
-      const title = "Apex Wealth Advisory - Portfolio Design & Risk Assessment Presentation";
+      const title = firm.meetingTitle;
       let calendarLink, meetLink;
       let inviteLine = `The meeting is on the books; a calendar invite will follow by email to ${attendee}.`;
 
@@ -416,10 +508,7 @@ export async function runTool(name, args, s, toolCallId) {
         try {
           const ev = await createCalendarEvent({
             summary: title,
-            description:
-              "Meeting 2 of 3 with Apex Portfolio Manager.\n\n" +
-              "We'll walk through a proposed Premier Growth Portfolio allocation and risk assessment based on the goals you shared on your discovery call.\n\n" +
-              "Past performance (8-10% historical returns) does not guarantee future results.",
+            description: firm.meetingDesc,
             start: slot.start, end, tz, attendees: [attendee], requestId: toolCallId,
           });
           calendarLink = ev.htmlLink;
@@ -435,8 +524,8 @@ export async function runTool(name, args, s, toolCallId) {
       await addMeeting(s.dealId, { title, startAt: slot.start.toISOString(), endAt: end.toISOString(), attendees: [attendee], calendarLink, meetLink });
       await addTask(
         s.dealId,
-        "Follow-up: Portfolio Design & Risk Assessment Presentation",
-        `Present a proposed allocation for ${s.prospectName} based on discovery answers. Address logged objections (fees, guarantees, recession risk).`,
+        firm.taskTitle,
+        firm.taskBody(s.prospectName),
         slot.start.toISOString(),
       );
       await feed({ type: "tool", title: `Meeting booked: ${slot.label}`, detail: `${inviteLine} Follow-up task created.`, conversationId: s.conversationId });

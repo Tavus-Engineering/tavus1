@@ -98,7 +98,7 @@ export default function ApexApp() {
 // ---- Console ------------------------------------------------------------------
 
 function Console({ state, refresh }) {
-  const [form, setForm] = useState({ meetingUrl: "", firstname: "Tim", lastname: "", email: "tim@tavus.io" });
+  const [form, setForm] = useState({ meetingUrl: "", firstname: "Tim", lastname: "", email: "tim@tavus.io", firm: "apex" });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -131,7 +131,18 @@ function Console({ state, refresh }) {
       <main className="wrap grid2">
         <div className="stack">
           <section className="card stack">
-            <h2>Send Apex Portfolio Manager into a call</h2>
+            <h2>Send an avatar into a call</h2>
+            <div>
+              <label>Meeting type</label>
+              <div className="seg">
+                <button className={form.firm === "apex" ? "on" : ""} onClick={() => setForm({ ...form, firm: "apex" })}>
+                  <b>Apex</b><span>Discovery call · 20-30 min</span>
+                </button>
+                <button className={form.firm === "optimize" ? "on" : ""} onClick={() => setForm({ ...form, firm: "optimize" })}>
+                  <b>Optimize</b><span>Brochure + initial meeting · 35-45 min</span>
+                </button>
+              </div>
+            </div>
             <div>
               <label>Zoom / Meet / Teams link</label>
               <input placeholder="https://us02web.zoom.us/j/123456789?pwd=..." value={form.meetingUrl}
@@ -152,7 +163,9 @@ function Console({ state, refresh }) {
               <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value.trim() })} />
             </div>
             <div className="row">
-              <button className="primary" disabled={busy || !!active} onClick={() => call("start", form)}>Send Apex in</button>
+              <button className="primary" disabled={busy || !!active} onClick={() => call("start", form)}>
+                Send {form.firm === "optimize" ? "Optimize" : "Apex"} in
+              </button>
               <button className="danger" disabled={busy || !active} onClick={() => call("end")}>End call</button>
             </div>
             {msg && <div className="pill bad" style={{ whiteSpace: "normal" }}>{msg}</div>}
@@ -187,7 +200,9 @@ function Console({ state, refresh }) {
                 <span>Shared storage (Redis)</span> <Check ok={cfg.store === "redis"} label={cfg.store} />
                 <span>Google Calendar</span>{" "}
                 {cfg.google ? <Check ok label="connected" /> : cfg.googleConfigured ? <a href={API("google_auth")}>Connect</a> : <Check label="add Google keys" />}
-                <span>Avatar (PAL)</span> <span className="pill">{cfg.palId}</span>
+                {Object.entries(cfg.firms || {}).map(([k, f]) => (
+                  <React.Fragment key={k}><span>{f.label} avatar</span> <span className="pill">{f.palId || "not set"}</span></React.Fragment>
+                ))}
               </div>
             ) : (
               <div className="muted">Loading…</div>
@@ -322,7 +337,14 @@ function DealRecord({ id, state }) {
           <div style={{ marginTop: 14 }}>
             <Prop k="Deal owner" v={deal.owner} />
             <Prop k="Last modified" v={fmtDateTime(deal.updatedAt)} />
-            {Object.entries(PROP_LABELS).map(([k, l]) => <Prop key={k} k={l} v={deal.props[k]} custom />)}
+            {Object.entries(PROP_LABELS).filter(([k]) => deal.firm !== "optimize" || deal.props[k] || k === "client_objections" || k === "discovery_summary")
+              .map(([k, l]) => <Prop key={k} k={l} v={deal.props[k]} custom />)}
+            {deal.firm === "optimize" && (
+              <>
+                <div className="muted" style={{ marginTop: 14, fontWeight: 600 }}>Client profile (initial meeting)</div>
+                {Object.entries(state.config?.profileFields || {}).map(([k, l]) => <Prop key={k} k={l} v={deal.props[k]} custom />)}
+              </>
+            )}
           </div>
         </section>
 

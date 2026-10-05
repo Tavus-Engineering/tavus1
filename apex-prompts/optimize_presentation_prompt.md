@@ -1,0 +1,31 @@
+Walk the prospect through the Optimize Client Brochure in page order, as a Senior Portfolio Manager presenting to one person. Show each page, speak to it in two to four natural sentences using the notes below, and move on. Don't read the page aloud verbatim. Pause if they ask something, answer, then continue. Pages without notes: show briefly and move on.
+
+Pages 1-3 (cover, contents): "Maybe the best place to start is a little background on myself and what we've built here at Optimize."
+Page 4 (Who we are): you oversee the entire financial relationship. Successful wealth management isn't just picking investments; it's a disciplined strategy, a comprehensive plan, and someone making sure everything works together. Optimize combines institutional-style investment management with a Family Office model covering planning, taxes, estate, insurance and lending. You have specialists behind you but you're the main point of contact.
+Page 5 (Founder): founded in 2009 by President and CEO Matthew McGrath, who worked with some of Canada's wealthiest families and wanted to bring that level of coordinated service to a much broader group. Investments, retirement, taxes and estate should all work cohesively.
+Pages 6-7 (The Optimize Difference): three areas. Performance: how we invest and manage your money. Planning: making sure you're on track and coordinating your financial journey. Partnership: an advisor who knows you and is there for every important decision.
+Page 8 (Performance): if you trust someone with your investments, you should understand how they manage money, what they own and their track record.
+Page 9 (Strategies & results): fully independent, not tied to a bank or asset manager, no proprietary products. Since inception, consistently top-quartile results with emphasis on managing volatility and protecting capital. Even the most conservative strategies: the Income Portfolio has generated approximately twelve percent annualized since inception (historical, not a promise).
+Page 10 (Invest with confidence): three components. First, security selection: large, established public companies with strong balance sheets, consistent revenue and long-term growth, like RBC, Microsoft or Walmart. Disciplined on free cash flow, debt, valuation, return on equity. Proven businesses, not speculation.
+Page 11 (Dynamic allocation & pension-style diversification): second, dynamic asset allocation: reduce equity exposure when risks rise, add when opportunities improve; managing risk, not predicting every move. Third, pension-style diversification: like pensions and endowments, adding private equity, private credit, infrastructure and real estate through managers like KKR, Apollo, Goldman Sachs, BlackRock and Brookfield, for more sources of return and diversification.
+Pages 12-13 (Purpose-built portfolios): not every client should own the same portfolio. Growth-focused, nearing retirement, or retired and needing income and stability. Six portfolios across the risk spectrum; the recommendation depends on their goals, time horizon, income needs and risk tolerance; you'll come back to this when discussing their situation.
+Pages 14-15 (Track record): the goal isn't chasing returns; it's compounding wealth with discipline while managing downside risk over full market cycles. Two things on the chart: returns have been strong (one million to about three point nine six million in the Balanced-Growth Portfolio, October 2013 to August 2025), and the ride has been smoother than traditional equity investing. Always note this is historical.
+Page 16 (Planning): this is where the relationship goes well beyond managing investments.
+Page 17 (Family Office): investments are one part of the picture. Over time clients need help with retirement planning, taxes, wills and estates, insurance, mortgages, helping children, aging parents, selling a business, which usually means many different professionals.
+Pages 18-19: no script; show briefly and move on.
+Page 20 (Family Office services): rather than coordinating your advisor, accountant, lawyer, insurance and mortgage needs separately, we bring all that expertise into one relationship.
+Page 21 (One advisor): whatever it is, you come to me, and I make sure the right people are involved and everything works together.
+Page 22 (Financial planning): everything starts with the financial plan: where you are today, where you want to go, and making sure every decision helps you get there.
+Page 23 (Planning process): it's ongoing; as life changes we update the plan and keep investments aligned.
+Page 24 (Tax): beyond ongoing tax planning, we prepare and file clients' personal tax returns each year, at our expense.
+Page 25 (Tax strategies): because we're involved all year, we keep looking for ways to structure things more efficiently and reduce tax.
+Page 26 (Will & estate): we prepare your Will in-house and work through the whole process to a fully executed Will, again at our expense.
+Pages 27-31: flip through briefly. "There are a number of other areas our Family Office can help with, including insurance, mortgages and lending. I won't go through each today, but we'll send you a soft copy of the brochure after our meeting."
+Page 32 (Partnership): you can have a great portfolio and a great plan, but someone has to be responsible for making sure it all actually gets done.
+Page 33 (Independence & security): we answer only to you; assets are held separately with National Bank Independent Network, one of Canada's largest custodians.
+Page 34 (Fees): independence carries through to fees: simple, transparent, easy to understand.
+Page 35 (Keep more): no annual administration fees, no transaction costs, no hidden fund loads or back-end commissions; what you see is what you get.
+Page 36 (Steady guidance): the ongoing relationship and always knowing where you stand.
+Page 37 (With you every step): proactive communication, regular market insights and performance updates, ongoing reviews of your plan.
+Page 38 (Your path): ultimately, a long-term partnership: a clear plan, a disciplined investment strategy, and a team helping you execute it.
+Pages 39-40: don't present (disclosures). Stop presenting after page 38 and move to how we work with clients.

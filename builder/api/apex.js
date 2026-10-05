@@ -12,8 +12,6 @@ import * as A from "./_apex_lib.js";
    The PAL is "Apex Portfolio Manager" (p6e28aea25fd). Its five registry tools
    POST here with auth.type=hmac. */
 
-const PAL_ID = process.env.APEX_PAL_ID || "p6e28aea25fd";
-const FACE_ID = process.env.APEX_FACE_ID || "re3fd4adeafd";
 const MEETING_RE = /^https:\/\/([\w-]+\.)*(zoom\.us|meet\.google\.com|teams\.microsoft\.com|teams\.live\.com)\//;
 
 const origin = (req) => process.env.APEX_PUBLIC_URL || `https://${req.headers["x-forwarded-host"] || req.headers.host}`;
@@ -71,43 +69,45 @@ async function state(req, res) {
       tavus: !!process.env.TAVUS_API_KEY,
       google: await A.googleConnected(),
       googleConfigured: A.googleConfigured(),
-      palId: PAL_ID,
+      firms: Object.fromEntries(Object.entries(A.FIRMS).map(([k, f]) => [k, { label: f.label, palId: f.palId }])),
+      profileFields: A.PROFILE_FIELDS,
     },
   });
 }
 
 async function start(req, res) {
   if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
-  const { meetingUrl, firstname, lastname = "", email } = req.body || {};
+  const { meetingUrl, firstname, lastname = "", email, firm: firmKey = "apex" } = req.body || {};
+  const firm = A.FIRMS[firmKey];
+  if (!firm) { res.status(400).json({ error: `Unknown firm "${firmKey}"` }); return; }
+  if (!firm.palId) { res.status(500).json({ error: `No avatar configured for ${firm.label}` }); return; }
   if (!meetingUrl || !MEETING_RE.test(meetingUrl)) { res.status(400).json({ error: "Paste a Zoom, Google Meet or Teams link" }); return; }
   if (!firstname || !email) { res.status(400).json({ error: "Prospect first name and email are required" }); return; }
   if (await A.getActiveId()) { res.status(409).json({ error: "A call is already live. End it first." }); return; }
 
   await A.ensureSeeded();
-  const { contact, deal } = await A.createProspect({ firstname, lastname, email });
+  const { contact, deal } = await A.createProspect({ firstname, lastname, email, firm: firmKey });
   const name = `${firstname} ${lastname}`.trim();
   try {
-    await A.ensureConferencing(PAL_ID);
+    await A.ensureConferencing(firm.palId);
     const convo = await A.createConversation({
-      pal_id: PAL_ID,
-      face_id: FACE_ID,
+      pal_id: firm.palId,
+      face_id: firm.faceId,
       meeting_url: meetingUrl,
-      conversation_name: `Apex discovery - ${name}`,
+      conversation_name: `${firm.label} - ${name}`,
       callback_url: `${origin(req)}/api/apex?op=webhook`,
-      custom_greeting:
-        `Hi ${firstname}, great to meet you! I'm the Apex Portfolio Manager here at Apex Wealth Advisory. ` +
-        `Thanks so much for making the time today. How's your day going so far?`,
+      custom_greeting: firm.greeting(firstname),
       conversational_context:
-        `Today is ${A.todayLabel()} (Eastern Time). The prospect on this call is ${name}, email ${email}. ` +
+        `Today is ${A.todayLabel()}; the meeting started at ${A.nowTimeLabel()} Eastern Time. The prospect on this call is ${name}, email ${email}. ` +
         `A deal already exists in the CRM for them at stage "Discovery Call Scheduled". Your greeting already played; don't re-introduce yourself.`,
-      properties: { max_call_duration: 2700, participant_left_timeout: 60 },
+      properties: { max_call_duration: firmKey === "optimize" ? 3600 : 2700, participant_left_timeout: 60 },
     });
     await A.saveSession({
       conversationId: convo.conversation_id, meetingUrl, dealId: deal.id, contactId: contact.id,
-      prospectName: name, prospectEmail: email, startedAt: new Date().toISOString(), status: "starting",
+      prospectName: name, prospectEmail: email, firm: firmKey, startedAt: new Date().toISOString(), status: "starting",
     });
     await A.setActiveId(convo.conversation_id);
-    await A.feed({ type: "system", title: "Apex is joining the meeting", detail: meetingUrl, conversationId: convo.conversation_id });
+    await A.feed({ type: "system", title: `${firm.label} avatar is joining the meeting`, detail: meetingUrl, conversationId: convo.conversation_id });
     res.status(200).json({ conversationId: convo.conversation_id, dealId: deal.id });
   } catch (e) {
     await A.feed({ type: "error", title: "Could not start conversation", detail: e.message });
