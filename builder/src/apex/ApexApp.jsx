@@ -663,6 +663,7 @@ function PublicMeet({ firm }) {
 // next page. If the turn ended on a question, wait for the prospect.
 
 const ADVANCE_DELAY_MS = 1500;
+const UNKNOWN_TURN_DELAY_MS = 4000;
 const MAX_UNANSWERED_ADVANCES = 14; // runaway guard; resets when the prospect speaks
 
 function AutoAdvance({ conversationId }) {
@@ -699,11 +700,19 @@ function AutoAdvance({ conversationId }) {
       if (/stopped_speaking/i.test(d.event_type)) {
         clearTimeout(timer);
         if (who === "user") { userTalking = false; return; }
-        timer = setTimeout(() => {
+        // Decide when the timer fires (the transcript can land just after stopped_speaking).
+        const decide = (extended) => {
+          if (userTalking || !presenting()) { buf = ""; return; }
           const said = buf.trim();
+          if (!said && !extended) {
+            // No transcript yet: can't tell question from statement, so give the prospect longer.
+            timer = setTimeout(() => decide(true), UNKNOWN_TURN_DELAY_MS - ADVANCE_DELAY_MS);
+            return;
+          }
           buf = "";
-          if (userTalking || !presenting()) return;
-          if (/\?["')\]]*$/.test(said)) return; // asked a question: wait for the prospect
+          // A question anywhere near the end of the turn means "wait for the prospect",
+          // even if the avatar tacked a short line on after it.
+          if (said.slice(-220).includes("?")) return;
           if (advances >= MAX_UNANSWERED_ADVANCES) return;
           advances += 1;
           try {
@@ -712,7 +721,8 @@ function AutoAdvance({ conversationId }) {
               "*"
             );
           } catch { /* room gone */ }
-        }, ADVANCE_DELAY_MS);
+        };
+        timer = setTimeout(() => decide(false), ADVANCE_DELAY_MS);
       }
     };
 

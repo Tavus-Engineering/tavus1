@@ -100,7 +100,7 @@ async function launch(req, { firmKey, mode, meetingUrl, firstname, lastname, ema
         `Today is ${A.todayLabel()}; the meeting started at ${A.nowTimeLabel()} Eastern Time. The prospect on this call is ${name}, email ${email}. ` +
         `A deal already exists in the CRM for them at stage "Discovery Call Scheduled". Your greeting already played; don't re-introduce yourself.` +
         (firmKey === "optimize"
-          ? " During the brochure, present in short passes and pause only at the six planned question moments; after each question, stop and wait for the answer."
+          ? " During the brochure, present one page per turn and pause only at the six planned questions; each question is the last thing you say in that turn."
           : ""),
       properties: { max_call_duration: firmKey === "optimize" ? 3600 : 2700, participant_left_timeout: 60 },
     });

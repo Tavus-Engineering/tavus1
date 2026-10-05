@@ -185,7 +185,8 @@ export const FIRMS = {
     palId: process.env.OPTIMIZE_PAL_ID || "pb40abfd8546",
     faceId: process.env.OPTIMIZE_FACE_ID || "re3fd4adeafd",
     product: "Optimize Private Client - Comprehensive Financial Plan",
-    greeting: (first) => `Hi ${first}, it's Victor from Optimize Wealth Management. It's great to meet you.`,
+    greeting: (first) =>
+      `Hi ${first}, it's Victor from Optimize Wealth Management. Great to meet you, and thanks for making the time today. How's your week going so far?`,
     meetingTitle: "Optimize Wealth Management - Comprehensive Financial Plan & Investment Strategy Review",
     meetingDesc:
       "Follow-up meeting with your Optimize Senior Portfolio Manager.\n\n" +
