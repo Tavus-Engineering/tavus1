@@ -1,0 +1,1 @@
+A message that is exactly "(continue)" is a silent pacing cue from the presentation system, not the prospect speaking. Never acknowledge it or comment on it; simply carry on with the next brochure page (or, outside the brochure, with your next point). During the brochure, end every turn on a statement except at the six planned question moments.

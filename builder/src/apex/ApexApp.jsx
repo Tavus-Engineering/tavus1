@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { CVIProvider } from "../components/cvi/components/cvi-provider";
 import { Conversation } from "../components/cvi/components/conversation";
+import { useDaily } from "@daily-co/daily-react";
 
 /* Apex Wealth demo — Live Call Console + CRM sandbox, served at /apex.
    Backend: /api/apex?op=… (api/apex.js). Signed-in builder session required. */
@@ -525,6 +526,7 @@ function Room({ state, refresh }) {
         <div className="room-stage">
           <CVIProvider>
             <Conversation conversationUrl={active.conversationUrl} onLeave={leave} />
+            <AutoAdvance conversationId={active.conversationId} />
           </CVIProvider>
         </div>
         {showFeed && (
@@ -600,6 +602,7 @@ function PublicMeet({ firm }) {
           <div className="room-stage">
             <CVIProvider>
               <Conversation conversationUrl={call.conversationUrl} onLeave={leave} />
+              <AutoAdvance conversationId={call.conversationId} />
             </CVIProvider>
           </div>
         </div>
@@ -649,4 +652,72 @@ function PublicMeet({ firm }) {
       </div>
     </div>
   );
+}
+
+// ---- Presentation pacing ------------------------------------------------------------
+// The avatar presents one brochure page per turn, so something has to start the
+// next turn. Prompt wording can't time that, and Tavus's idle_engagement either
+// waits too long or jumps in while the prospect is thinking. So the call page
+// decides: while the avatar is presenting (screen track live), if its turn ended
+// on a statement and the prospect hasn't started talking within ~1.5s, cue the
+// next page. If the turn ended on a question, wait for the prospect.
+
+const ADVANCE_DELAY_MS = 1500;
+const MAX_UNANSWERED_ADVANCES = 14; // runaway guard; resets when the prospect speaks
+
+function AutoAdvance({ conversationId }) {
+  const daily = useDaily();
+  useEffect(() => {
+    if (!daily || !conversationId) return;
+    let buf = "";
+    let timer = null;
+    let userTalking = false;
+    let advances = 0;
+
+    const roleOf = (d) => String(d.properties?.role ?? (/\.user\./i.test(d.event_type) ? "user" : "replica")).toLowerCase();
+    const presenting = () =>
+      Object.values(daily.participants() || {}).some(
+        (p) => !p.local && ["playable", "loading", "interrupted"].includes(p.tracks?.screenVideo?.state)
+      );
+
+    const onMsg = (e) => {
+      const d = e?.data;
+      if (!d?.event_type) return;
+      const who = roleOf(d);
+
+      if (/^conversation\.utterance$/i.test(d.event_type) && who !== "user") {
+        const t = String(d.properties?.speech ?? d.properties?.text ?? "").trim();
+        // Utterances can arrive cumulatively; replace rather than stack.
+        if (t) buf = t.startsWith(buf) ? t : buf.startsWith(t) ? buf : `${buf} ${t}`.trim();
+        return;
+      }
+      if (/started_speaking/i.test(d.event_type)) {
+        clearTimeout(timer);
+        if (who === "user") { userTalking = true; advances = 0; buf = ""; }
+        return;
+      }
+      if (/stopped_speaking/i.test(d.event_type)) {
+        clearTimeout(timer);
+        if (who === "user") { userTalking = false; return; }
+        timer = setTimeout(() => {
+          const said = buf.trim();
+          buf = "";
+          if (userTalking || !presenting()) return;
+          if (/\?["')\]]*$/.test(said)) return; // asked a question: wait for the prospect
+          if (advances >= MAX_UNANSWERED_ADVANCES) return;
+          advances += 1;
+          try {
+            daily.sendAppMessage(
+              { message_type: "conversation", event_type: "conversation.respond", conversation_id: conversationId, properties: { text: "(continue)" } },
+              "*"
+            );
+          } catch { /* room gone */ }
+        }, ADVANCE_DELAY_MS);
+      }
+    };
+
+    daily.on("app-message", onMsg);
+    return () => { clearTimeout(timer); daily.off("app-message", onMsg); };
+  }, [daily, conversationId]);
+  return null;
 }
