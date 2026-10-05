@@ -63,6 +63,18 @@ export async function setOnce(key, ttl = 86400) {
   }
   return (await redis(["SET", key, "1", "NX", "EX", String(ttl)])) === "OK";
 }
+/* Counter with TTL on first touch — rate limits for the public share link. */
+export async function incr(key, ttl) {
+  if (storeMode === "memory") {
+    const n = (mem.get(key) || 0) + 1;
+    mem.set(key, n);
+    return n;
+  }
+  const n = await redis(["INCR", key]);
+  if (n === 1) await redis(["EXPIRE", key, String(ttl)]);
+  return n;
+}
+
 async function scanKeys(match) {
   if (storeMode === "memory") {
     const re = new RegExp("^" + match.split("*").map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$");
@@ -284,7 +296,8 @@ const SEED = [
 
 /* Wipes ONLY apex:* keys (CRM, sessions, feed, tool-call ids) — never builder data. */
 export async function resetAndSeed() {
-  const keys = (await scanKeys("apex:*")).filter((k) => k !== GOOGLE_TOKEN_KEY);
+  // Keep the Google connection and the share-link rate limits across resets.
+  const keys = (await scanKeys("apex:*")).filter((k) => k !== GOOGLE_TOKEN_KEY && !k.startsWith("apex:rl:"));
   for (let i = 0; i < keys.length; i += 200) await del(...keys.slice(i, i + 200));
   for (const [f, l, e, amt, stage, note] of SEED) {
     const { deal } = await createProspect({ firstname: f, lastname: l, email: e, amount: amt });

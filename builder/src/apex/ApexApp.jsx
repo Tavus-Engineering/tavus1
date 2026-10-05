@@ -76,6 +76,13 @@ function useAppState(intervalMs = 2000) {
 
 export default function ApexApp() {
   const path = usePath();
+  // Public share link: no sign-in, no console state.
+  const pub = path.match(/^\/meet\/([a-z]+)$/);
+  if (pub) return <PublicMeet firm={pub[1]} />;
+  return <Signed path={path} />;
+}
+
+function Signed({ path }) {
   const app = useAppState(path === "/apex" ? 1500 : 2000);
 
   if (app.error && !app.state) {
@@ -534,6 +541,110 @@ function Room({ state, refresh }) {
               ))}
             </div>
           </aside>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---- Public share link (/meet/:firm) ----------------------------------------------
+// A prospect opens the link, enters name + email, and talks to the avatar directly.
+// Same CRM writes as the console; never shows internal activity.
+
+function PublicMeet({ firm }) {
+  const [info, setInfo] = useState(null);
+  const [form, setForm] = useState({ firstname: "", lastname: "", email: "" });
+  const [call, setCall] = useState(null);
+  const [phase, setPhase] = useState("form"); // form | call | done
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    fetch(`${API("public_info")}&firm=${firm}`).then(async (r) => {
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) setErr(j.error || "This link isn't active.");
+      else setInfo(j);
+    });
+  }, [firm]);
+
+  async function start(e) {
+    e.preventDefault();
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await fetch(API("public_start"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...form, firm }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) return setErr(j.error || "Couldn't start the call.");
+      setCall(j);
+      setPhase("call");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const leave = useCallback(() => {
+    if (call) fetch(API("public_end"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationId: call.conversationId }) }).catch(() => {});
+    setPhase("done");
+  }, [call]);
+
+  const label = info?.label || "";
+  if (phase === "call" && call?.conversationUrl) {
+    return (
+      <div className="room">
+        <header className="topbar"><div className="logo">{label.toUpperCase()}</div></header>
+        <div className="room-body">
+          <div className="room-stage">
+            <CVIProvider>
+              <Conversation conversationUrl={call.conversationUrl} onLeave={leave} />
+            </CVIProvider>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="meet">
+      <div className="meet-card">
+        <div className="meet-brand">{label || " "}</div>
+        {phase === "done" ? (
+          <>
+            <h1>Thanks for your time{form.firstname ? `, ${form.firstname}` : ""}.</h1>
+            <p className="muted">If you booked a follow-up, the invite is on its way to {form.email || "your inbox"}.</p>
+          </>
+        ) : err && !info ? (
+          <>
+            <h1>Link unavailable</h1>
+            <p className="muted">{err}</p>
+          </>
+        ) : (
+          <form onSubmit={start} className="stack">
+            <h1>Meet your portfolio manager</h1>
+            <p className="muted">
+              A live video conversation{info ? ` (about ${info.minutes} minutes)` : ""}. Allow camera and microphone when your browser asks.
+            </p>
+            <div className="row" style={{ flexWrap: "nowrap" }}>
+              <div style={{ flex: 1 }}>
+                <label>First name</label>
+                <input required value={form.firstname} onChange={(e) => setForm({ ...form, firstname: e.target.value })} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label>Last name</label>
+                <input value={form.lastname} onChange={(e) => setForm({ ...form, lastname: e.target.value })} />
+              </div>
+            </div>
+            <div>
+              <label>Email</label>
+              <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value.trim() })} />
+            </div>
+            <button className="primary" disabled={busy || !info}>{busy ? "Starting…" : "Start the conversation"}</button>
+            {err && <div className="pill bad" style={{ whiteSpace: "normal" }}>{err}</div>}
+            <p className="muted" style={{ fontSize: 12 }}>You'll be speaking with an AI avatar. Past performance is not indicative of future results.</p>
+          </form>
         )}
       </div>
     </div>

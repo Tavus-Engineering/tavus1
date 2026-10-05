@@ -6,6 +6,10 @@
   "outputDirectory": "builder/dist",
   "rewrites": [
     {
+      "source": "/meet/:firm",
+      "destination": "/apex/index.html"
+    },
+    {
       "source": "/apex",
       "destination": "/apex/index.html"
     },

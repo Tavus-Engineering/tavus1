@@ -35,3 +35,12 @@ Pick "Optimize" on the console. Second PAL "Optimize Senior Portfolio Manager"
   `book_plan_review` (Comprehensive Financial Plan review, 60 min), plus the shared
   `log_objection`, `complete_discovery_call`, `request_advisor_handoff`.
 - Guardrail `g204367c8b27a`: no guarantees, no invented fee %, no advisor comp talk.
+
+## Standalone + share link
+
+- Console "Where" defaults to **Standalone**: a Tavus-hosted room rendered at `/apex/room`
+  with the builder's vendored CVI UI (brochure pages become the main view while presenting).
+- **Share link**: `https://tavus1.vercel.app/meet/optimize` (also `/meet/apex`). Public, no sign-in:
+  visitor enters name + email and talks to the avatar; CRM + booking work the same; never
+  occupies the console's live-call slot. Caps: 4 calls per network per hour, 40 per day
+  (`APEX_PUBLIC_DAILY_CAP`). Rate-limit keys survive "Reset demo data".

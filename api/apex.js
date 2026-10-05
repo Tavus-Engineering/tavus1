@@ -35,6 +35,9 @@ export default async function handler(req, res) {
       case "tool": return await tool(req, res);
       case "webhook": return await webhook(req, res);
       case "google_callback": return await googleCallback(req, res);
+      case "public_info": return await publicInfo(req, res);
+      case "public_start": return await publicStart(req, res);
+      case "public_end": return await publicEnd(req, res);
     }
     if (!isAuthed(req)) { res.status(401).json({ error: "Sign in to the builder first (open the home page), then come back to /apex." }); return; }
     switch (op) {
@@ -75,17 +78,11 @@ async function state(req, res) {
   });
 }
 
-async function start(req, res) {
-  if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
-  const { meetingUrl, firstname, lastname = "", email, firm: firmKey = "apex", mode = "room" } = req.body || {};
+/* Creates the CRM prospect + Tavus conversation. Shared by the signed-in console
+   (start) and the public share link (public_start). */
+async function launch(req, { firmKey, mode, meetingUrl, firstname, lastname, email, isPublic }) {
   const inZoom = mode === "zoom";
   const firm = A.FIRMS[firmKey];
-  if (!firm) { res.status(400).json({ error: `Unknown firm "${firmKey}"` }); return; }
-  if (!firm.palId) { res.status(500).json({ error: `No avatar configured for ${firm.label}` }); return; }
-  if (inZoom && (!meetingUrl || !MEETING_RE.test(meetingUrl))) { res.status(400).json({ error: "Paste a Zoom, Google Meet or Teams link" }); return; }
-  if (!firstname || !email) { res.status(400).json({ error: "Prospect first name and email are required" }); return; }
-  if (await A.getActiveId()) { res.status(409).json({ error: "A call is already live. End it first." }); return; }
-
   await A.ensureSeeded();
   const { contact, deal } = await A.createProspect({ firstname, lastname, email, firm: firmKey });
   const name = `${firstname} ${lastname}`.trim();
@@ -94,33 +91,97 @@ async function start(req, res) {
     const convo = await A.createConversation({
       pal_id: firm.palId,
       face_id: firm.faceId,
-      // Standalone = Tavus-hosted room opened at /apex/room; Zoom = PAL joins the meeting link.
+      // Standalone = Tavus-hosted room rendered in our page; Zoom = PAL joins the meeting link.
       ...(inZoom ? { meeting_url: meetingUrl } : {}),
-      conversation_name: `${firm.label} - ${name}`,
+      conversation_name: `${firm.label} - ${name}${isPublic ? " (share link)" : ""}`,
       callback_url: `${origin(req)}/api/apex?op=webhook`,
       custom_greeting: firm.greeting(firstname),
       conversational_context:
         `Today is ${A.todayLabel()}; the meeting started at ${A.nowTimeLabel()} Eastern Time. The prospect on this call is ${name}, email ${email}. ` +
-        `A deal already exists in the CRM for them at stage "Discovery Call Scheduled". Your greeting already played; don't re-introduce yourself.`,
+        `A deal already exists in the CRM for them at stage "Discovery Call Scheduled". Your greeting already played; don't re-introduce yourself.` +
+        (firmKey === "optimize"
+          ? " When you present the brochure, keep moving from page to page without waiting for the prospect to respond; only check in at the end of each section."
+          : ""),
       properties: { max_call_duration: firmKey === "optimize" ? 3600 : 2700, participant_left_timeout: 60 },
     });
     await A.saveSession({
       conversationId: convo.conversation_id, conversationUrl: convo.conversation_url, mode: inZoom ? "zoom" : "room",
-      meetingUrl: inZoom ? meetingUrl : null, dealId: deal.id, contactId: contact.id,
+      meetingUrl: inZoom ? meetingUrl : null, dealId: deal.id, contactId: contact.id, public: !!isPublic,
       prospectName: name, prospectEmail: email, firm: firmKey, startedAt: new Date().toISOString(), status: "starting",
     });
-    await A.setActiveId(convo.conversation_id);
+    // Share-link calls run in parallel and never occupy the console's single "active" slot.
+    if (!isPublic) await A.setActiveId(convo.conversation_id);
     await A.feed({
       type: "system",
-      title: inZoom ? `${firm.label} avatar is joining the meeting` : `${firm.label} room is ready`,
-      detail: inZoom ? meetingUrl : "Standalone call opened in the browser",
+      title: isPublic ? `${name} started a ${firm.label} call from the share link` : inZoom ? `${firm.label} avatar is joining the meeting` : `${firm.label} room is ready`,
+      detail: inZoom ? meetingUrl : isPublic ? email : "Standalone call opened in the browser",
       conversationId: convo.conversation_id,
     });
-    res.status(200).json({ conversationId: convo.conversation_id, conversationUrl: inZoom ? null : convo.conversation_url, dealId: deal.id });
+    return { conversationId: convo.conversation_id, conversationUrl: inZoom ? null : convo.conversation_url, dealId: deal.id };
   } catch (e) {
     await A.feed({ type: "error", title: "Could not start conversation", detail: e.message });
+    throw e;
+  }
+}
+
+async function start(req, res) {
+  if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+  const { meetingUrl, firstname, lastname = "", email, firm: firmKey = "apex", mode = "room" } = req.body || {};
+  const firm = A.FIRMS[firmKey];
+  if (!firm) { res.status(400).json({ error: `Unknown firm "${firmKey}"` }); return; }
+  if (!firm.palId) { res.status(500).json({ error: `No avatar configured for ${firm.label}` }); return; }
+  if (mode === "zoom" && (!meetingUrl || !MEETING_RE.test(meetingUrl))) { res.status(400).json({ error: "Paste a Zoom, Google Meet or Teams link" }); return; }
+  if (!firstname || !email) { res.status(400).json({ error: "Prospect first name and email are required" }); return; }
+  if (await A.getActiveId()) { res.status(409).json({ error: "A call is already live. End it first." }); return; }
+  try {
+    res.status(200).json(await launch(req, { firmKey, mode, meetingUrl, firstname, lastname, email, isPublic: false }));
+  } catch (e) {
     res.status(502).json({ error: e.message });
   }
+}
+
+// ---- public share link (/meet/:firm) ----------------------------------------
+// Anyone with the link can start a call, so it's capped: per-IP per hour and an
+// account-wide daily ceiling (APEX_PUBLIC_DAILY_CAP, default 40).
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const clientIp = (req) => String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown").split(",")[0].trim();
+
+async function publicInfo(req, res) {
+  const firm = A.FIRMS[String(req.query?.firm || "")];
+  if (!firm || !firm.palId) { res.status(404).json({ error: "This link isn't active." }); return; }
+  res.status(200).json({ label: firm.label, minutes: req.query.firm === "optimize" ? "35-45" : "20-30" });
+}
+
+async function publicStart(req, res) {
+  if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+  const { firm: firmKey, firstname = "", lastname = "", email = "" } = req.body || {};
+  const firm = A.FIRMS[firmKey];
+  if (!firm || !firm.palId) { res.status(404).json({ error: "This link isn't active." }); return; }
+  const first = String(firstname).trim().slice(0, 60), last = String(lastname).trim().slice(0, 60), mail = String(email).trim().slice(0, 120);
+  if (!first || !EMAIL_RE.test(mail)) { res.status(400).json({ error: "Please enter your first name and a valid email." }); return; }
+
+  const hour = new Date().toISOString().slice(0, 13), day = hour.slice(0, 10);
+  if ((await A.incr(`apex:rl:ip:${clientIp(req)}:${hour}`, 3600)) > 4) { res.status(429).json({ error: "Too many calls from this network in the last hour. Please try again later." }); return; }
+  if ((await A.incr(`apex:rl:day:${day}`, 86400)) > Number(process.env.APEX_PUBLIC_DAILY_CAP || 40)) { res.status(429).json({ error: "This demo has reached today's limit. Please try again tomorrow." }); return; }
+
+  try {
+    const out = await launch(req, { firmKey, mode: "room", firstname: first, lastname: last, email: mail, isPublic: true });
+    res.status(200).json({ conversationId: out.conversationId, conversationUrl: out.conversationUrl });
+  } catch (e) {
+    res.status(502).json({ error: "Couldn't start the call. Please try again in a minute." });
+  }
+}
+
+async function publicEnd(req, res) {
+  const id = String(req.body?.conversationId || "");
+  const s = await A.getSession(id);
+  if (s?.public && s.status !== "ended") {
+    try { await A.endConversation(id); } catch { /* participant_left_timeout ends it anyway */ }
+    await A.saveSession({ ...s, status: "ended" });
+    await A.feed({ type: "system", title: `${s.prospectName} left the share-link call`, conversationId: id });
+  }
+  res.status(200).json({ ok: true });
 }
 
 async function end(req, res) {
