@@ -198,7 +198,7 @@ export const FIRMS = {
   },
   corpdev: {
     label: "Optimize Corporate Development",
-    palId: process.env.CORPDEV_PAL_ID || "",
+    palId: process.env.CORPDEV_PAL_ID || "pe1cff40644a",
     faceId: process.env.CORPDEV_FACE_ID || "re3fd4adeafd",
     product: "Optimize Advisor Platform - Advisor Recruitment",
     greeting: (first) =>
