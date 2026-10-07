@@ -44,3 +44,13 @@ Pick "Optimize" on the console. Second PAL "Optimize Senior Portfolio Manager"
   visitor enters name + email and talks to the avatar; CRM + booking work the same; never
   occupies the console's live-call slot. Caps: 4 calls per network per hour, 40 per day
   (`APEX_PUBLIC_DAILY_CAP`). Rate-limit keys survive "Reset demo data".
+
+## Optimize Corp Dev mode (advisor recruiting)
+
+Console option "Optimize Corp Dev" and share link `/meet/corpdev`. PAL `pe1cff40644a`
+("Optimize Corp Dev - Victor", face Victor, tavus-gpt-5.6-terra). Deck:
+`builder/public/apex-assets/optimize-advisor-platform.pdf` (script pages only). FAQ knowledge:
+`builder/public/apex-assets/optimize-corpdev-faq.txt` (internal notes removed; figures aligned to
+the intro script). Tools: `record_advisor_profile` (Dealer Analysis Report inputs),
+`book_dar_review` (meeting 2 of 4), plus shared objection/handoff/complete tools.
+Guardrail `g31c7be8c1804`. Scripts: `apex-prompts/corpdev_*.md`.
