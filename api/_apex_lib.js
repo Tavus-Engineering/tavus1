@@ -196,6 +196,22 @@ export const FIRMS = {
     taskTitle: "Follow-up: Comprehensive Financial Plan & Investment Strategy Review",
     taskBody: (name) => `Build ${name}'s Comprehensive Financial Plan and initial investment strategy from the discovery profile, and present it at this meeting.`,
   },
+  corpdev: {
+    label: "Optimize Corporate Development",
+    palId: process.env.CORPDEV_PAL_ID || "",
+    faceId: process.env.CORPDEV_FACE_ID || "re3fd4adeafd",
+    product: "Optimize Advisor Platform - Advisor Recruitment",
+    greeting: (first) =>
+      `Hi ${first}, it's Victor from Optimize Wealth Management. Great to connect, and thanks for making the time. How's your week been so far?`,
+    meetingTitle: "Optimize - Dealer Analysis Report Review & Investment Process (Meeting 2 of 4)",
+    meetingDesc:
+      "Follow-up with Optimize Corporate Development.\n\n" +
+      "We'll walk through your custom Dealer Analysis Report (your compensation under the Optimize platform and the solutions available to your clients) and take a deeper look at our Institutional Investment Management Program.\n\n" +
+      "Performance figures discussed are historical and not a guarantee of future results.",
+    minutes: 45,
+    taskTitle: "Follow-up: Dealer Analysis Report review (meeting 2 of 4)",
+    taskBody: (name) => `Prepare ${name}'s Dealer Analysis Report from the intro-meeting profile and send investment info, firm overview and sample statements beforehand. Send the advisor testimonial video links.`,
+  },
 };
 export const firmOf = (s) => FIRMS[s?.firm] || FIRMS.apex;
 
@@ -224,7 +240,7 @@ export const newId = (p) => `${p}_${Date.now().toString(36)}${Math.random().toSt
 const now = () => new Date().toISOString();
 
 export const categoryLabel = (c) =>
-  ({ fees: "Fee concern", guaranteed_returns: "Guaranteed returns", recession_risk: "Recession risk", account_setup: "Account setup timing", other: "Other" })[c] ?? c;
+  ({ fees: "Fee concern", guaranteed_returns: "Guaranteed returns", recession_risk: "Recession risk", account_setup: "Account setup timing", proprietary_products: "Proprietary products", transfers_in_kind: "Transfers in kind", compensation: "Compensation", book_ownership: "Book ownership", licensing: "Licensing", transition_effort: "Transition effort", regulatory: "Regulatory history", firm_stability: "Firm stability", other: "Other" })[c] ?? c;
 
 export async function getDeal(id) {
   const b = await getJSON(K.deal(id));
@@ -276,7 +292,7 @@ export async function createProspect({ firstname, lastname = "", email, amount =
     id: newId("deal"),
     name: `${`${firstname} ${lastname}`.trim()} - ${f.product}`,
     contactId: contact.id, amount, stage: "discovery_scheduled", product: f.product, firm,
-    owner: firm === "optimize" ? "Optimize Senior Portfolio Manager (AI)" : "Apex Portfolio Manager (AI)",
+    owner: firm === "optimize" ? "Optimize Senior Portfolio Manager (AI)" : firm === "corpdev" ? "Optimize Corporate Development (AI)" : "Apex Portfolio Manager (AI)",
     createdAt: now(), updatedAt: now(), props: {},
   };
   await setJSON(K.contact(contact.id), contact);
@@ -462,10 +478,33 @@ export const PROFILE_FIELDS = {
   ideal_relationship: "Wants from an advisory relationship",
 };
 
+/* Corp Dev intro meeting: the Dealer Analysis Report inputs. */
+export const ADVISOR_FIELDS = {
+  current_dealer: "Current dealer",
+  book_size: "Book size (AUM)",
+  organic_growth: "Expected organic growth",
+  years_in_industry: "Years in industry",
+  years_to_retirement: "Years to retirement",
+  households: "Households",
+  individuals_per_household: "Individuals per household",
+  registered_pct: "% clients with registered accounts",
+  admin_fee_registered: "Admin fee on registered accounts",
+  equity_trade_cost: "Cost per equity trade",
+  mutual_fund_trade_cost: "Cost per mutual fund trade",
+  monthly_dealer_fees: "Monthly fixed dealer fees",
+  succession_multiple: "Dealer succession multiple",
+  gross_revenue_pct: "Gross revenue (% of book)",
+  grid_payout: "Grid payout",
+  client_risk_tilt: "Client risk profile tilt",
+  values_commitment: "Commitment to clients & professionalism",
+  personal_email: "Personal email",
+};
+
 export const GUIDE = {
   log_objection: "Noted. Now answer the prospect's concern(s) directly, warmly and concisely, following your objection guidance.",
   record_discovery_answers: "Saved. Briefly reflect their goals back and connect them to the Premier Growth Portfolio, then move toward booking the next meeting.",
   record_client_profile: "Saved. Continue with the next part of the meeting script.",
+  record_advisor_profile: "Saved. Continue with the next discovery question.",
   complete_discovery_call: "Done. Close warmly: confirm you'll see them at the booked time.",
   request_advisor_handoff: "Handoff created. Tell them a licensed advisor will follow up with them directly, then ask if there's anything else you can help with today.",
 };
@@ -507,6 +546,15 @@ export async function runTool(name, args, s, toolCallId) {
       return GUIDE.record_client_profile;
     }
 
+    case "record_advisor_profile": {
+      const props = Object.fromEntries(Object.entries(args).filter(([k]) => ADVISOR_FIELDS[k]).map(([k, v]) => [k, str(v)]));
+      await updateProps(s.dealId, props);
+      const filled = Object.entries(props).filter(([, v]) => v);
+      await feed({ type: "tool", title: `Dealer Analysis inputs saved (${filled.length} field${filled.length === 1 ? "" : "s"})`, detail: filled.map(([k, v]) => `${ADVISOR_FIELDS[k]}: ${v}`).join("\n"), conversationId: s.conversationId });
+      return GUIDE.record_advisor_profile;
+    }
+
+    case "book_dar_review":
     case "book_plan_review":
     case "book_next_meeting": {
       const firm = firmOf(s);

@@ -8,7 +8,7 @@ import { useDaily } from "@daily-co/daily-react";
 
 const API = (op) => `/api/apex?op=${op}`;
 
-const CATEGORY = { fees: "Fee concern", guaranteed_returns: "Guaranteed returns", recession_risk: "Recession risk", account_setup: "Account setup timing", other: "Other" };
+const CATEGORY = { fees: "Fee concern", guaranteed_returns: "Guaranteed returns", recession_risk: "Recession risk", account_setup: "Account setup timing", proprietary_products: "Proprietary products", transfers_in_kind: "Transfers in kind", compensation: "Compensation", book_ownership: "Book ownership", licensing: "Licensing", transition_effort: "Transition effort", regulatory: "Regulatory history", firm_stability: "Firm stability", other: "Other" };
 const PROP_LABELS = {
   client_objections: "Client Objections",
   discovery_summary: "Discovery Summary",
@@ -151,7 +151,10 @@ function Console({ state, refresh }) {
                   <b>Apex</b><span>Discovery call · 20-30 min</span>
                 </button>
                 <button className={form.firm === "optimize" ? "on" : ""} onClick={() => setForm({ ...form, firm: "optimize" })}>
-                  <b>Optimize</b><span>Brochure + initial meeting · 35-45 min</span>
+                  <b>Optimize</b><span>Client brochure + initial meeting · 35-45 min</span>
+                </button>
+                <button className={form.firm === "corpdev" ? "on" : ""} onClick={() => setForm({ ...form, firm: "corpdev" })}>
+                  <b>Optimize Corp Dev</b><span>Advisor recruiting intro · 30-40 min</span>
                 </button>
               </div>
             </div>
@@ -175,7 +178,7 @@ function Console({ state, refresh }) {
             )}
             <div className="row" style={{ flexWrap: "nowrap" }}>
               <div style={{ flex: 1 }}>
-                <label>Prospect first name</label>
+                <label>{form.firm === "corpdev" ? "Advisor first name" : "Prospect first name"}</label>
                 <input value={form.firstname} onChange={(e) => setForm({ ...form, firstname: e.target.value })} />
               </div>
               <div style={{ flex: 1 }}>
@@ -184,12 +187,12 @@ function Console({ state, refresh }) {
               </div>
             </div>
             <div>
-              <label>Prospect email (gets the calendar invite)</label>
+              <label>{form.firm === "corpdev" ? "Advisor email" : "Prospect email"} (gets the calendar invite)</label>
               <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value.trim() })} />
             </div>
             <div className="row">
               <button className="primary" disabled={busy || !!active} onClick={() => call("start", form)}>
-                Send {form.firm === "optimize" ? "Optimize" : "Apex"} in
+                Send {form.firm === "optimize" ? "Optimize" : form.firm === "corpdev" ? "Corp Dev" : "Apex"} in
               </button>
               <button className="danger" disabled={busy || !active} onClick={() => call("end")}>End call</button>
               {active?.mode === "room" && active.status !== "ended" && <A href="/apex/room">Rejoin call page →</A>}
@@ -363,8 +366,14 @@ function DealRecord({ id, state }) {
           <div style={{ marginTop: 14 }}>
             <Prop k="Deal owner" v={deal.owner} />
             <Prop k="Last modified" v={fmtDateTime(deal.updatedAt)} />
-            {Object.entries(PROP_LABELS).filter(([k]) => deal.firm !== "optimize" || deal.props[k] || k === "client_objections" || k === "discovery_summary")
+            {Object.entries(PROP_LABELS).filter(([k]) => !deal.firm || deal.firm === "apex" || deal.props[k] || k === "client_objections" || k === "discovery_summary")
               .map(([k, l]) => <Prop key={k} k={l} v={deal.props[k]} custom />)}
+            {deal.firm === "corpdev" && (
+              <>
+                <div className="muted" style={{ marginTop: 14, fontWeight: 600 }}>Dealer Analysis Report inputs</div>
+                {Object.entries(state.config?.advisorFields || {}).map(([k, l]) => <Prop key={k} k={l} v={deal.props[k]} custom />)}
+              </>
+            )}
             {deal.firm === "optimize" && (
               <>
                 <div className="muted" style={{ marginTop: 14, fontWeight: 600 }}>Client profile (initial meeting)</div>
@@ -626,7 +635,7 @@ function PublicMeet({ firm }) {
           </>
         ) : (
           <form onSubmit={start} className="stack">
-            <h1>Meet your portfolio manager</h1>
+            <h1>{info?.headline || "Meet your portfolio manager"}</h1>
             <p className="muted">
               A live video conversation{info ? ` (about ${info.minutes} minutes)` : ""}. Allow camera and microphone when your browser asks.
             </p>
@@ -646,7 +655,9 @@ function PublicMeet({ firm }) {
             </div>
             <button className="primary" disabled={busy || !info}>{busy ? "Starting…" : "Start the conversation"}</button>
             {err && <div className="pill bad" style={{ whiteSpace: "normal" }}>{err}</div>}
-            <p className="muted" style={{ fontSize: 12 }}>You'll be speaking with an AI avatar. Past performance is not indicative of future results.</p>
+            <p className="muted" style={{ fontSize: 12 }}>
+              You'll be speaking with an AI avatar{info?.audience === "advisor" ? " from Optimize Corporate Development" : ""}. Past performance is not indicative of future results.
+            </p>
           </form>
         )}
       </div>

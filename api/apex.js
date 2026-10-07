@@ -74,6 +74,7 @@ async function state(req, res) {
       googleConfigured: A.googleConfigured(),
       firms: Object.fromEntries(Object.entries(A.FIRMS).map(([k, f]) => [k, { label: f.label, palId: f.palId }])),
       profileFields: A.PROFILE_FIELDS,
+      advisorFields: A.ADVISOR_FIELDS,
     },
   });
 }
@@ -99,10 +100,11 @@ async function launch(req, { firmKey, mode, meetingUrl, firstname, lastname, ema
       conversational_context:
         `Today is ${A.todayLabel()}; the meeting started at ${A.nowTimeLabel()} Eastern Time. The prospect on this call is ${name}, email ${email}. ` +
         `A deal already exists in the CRM for them at stage "Discovery Call Scheduled". Your greeting already played; don't re-introduce yourself.` +
-        (firmKey === "optimize"
+        (firmKey === "optimize" || firmKey === "corpdev"
           ? " During the brochure, present one page per turn and pause only at the six planned questions; each question is the last thing you say in that turn."
-          : ""),
-      properties: { max_call_duration: firmKey === "optimize" ? 3600 : 2700, participant_left_timeout: 60 },
+          : "") +
+        (firmKey === "corpdev" ? ` The advisor's email (${email}) is on file, so the booking goes there.` : ""),
+      properties: { max_call_duration: firmKey === "apex" ? 2700 : 3600, participant_left_timeout: 60 },
     });
     await A.saveSession({
       conversationId: convo.conversation_id, conversationUrl: convo.conversation_url, mode: inZoom ? "zoom" : "room",
@@ -150,7 +152,13 @@ const clientIp = (req) => String(req.headers["x-forwarded-for"] || req.socket?.r
 async function publicInfo(req, res) {
   const firm = A.FIRMS[String(req.query?.firm || "")];
   if (!firm || !firm.palId) { res.status(404).json({ error: "This link isn't active." }); return; }
-  res.status(200).json({ label: firm.label, minutes: req.query.firm === "optimize" ? "35-45" : "20-30" });
+  const k = String(req.query.firm);
+  res.status(200).json({
+    label: k === "corpdev" ? "Optimize Wealth Management" : firm.label,
+    minutes: k === "apex" ? "20-30" : "35-45",
+    headline: k === "corpdev" ? "Explore the Optimize Advisor Platform" : "Meet your portfolio manager",
+    audience: k === "corpdev" ? "advisor" : "client",
+  });
 }
 
 async function publicStart(req, res) {
