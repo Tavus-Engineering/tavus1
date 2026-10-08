@@ -32,6 +32,18 @@ const CANVAS_COMPONENTS = [
   { key: "scheduling_embed", label: "Scheduling", desc: "Your live Calendly page embedded in-call for real booking. Needs a URL below to activate." },
 ];
 
+/* Starter demos — ready-made scenarios in builder/demos/*.json, bundled at
+   build time and offered in the Demo library. A tool URL written as
+   https://YOUR-BUILDER-DOMAIN/… points at this deployment's own /api
+   endpoints, so it's resolved to the current origin when a demo is adopted. */
+const STARTER_DEMOS = Object.values(import.meta.glob("../demos/*.json", { eager: true, import: "default" }))
+  .filter((d) => d && d.name && d.config)
+  .sort((a, b) => a.name.localeCompare(b.name));
+const withThisOrigin = (config) => {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  return origin ? JSON.parse(JSON.stringify(config).split("https://YOUR-BUILDER-DOMAIN").join(origin)) : config;
+};
+
 const STEPS = [
   { id: "start", label: "New Demo", group: "Start" },
   { id: "demos", label: "Demo library", group: "Start" },
@@ -4806,25 +4818,29 @@ export default function TavusExperienceBuilder() {
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   };
 
+  // Imported files and starter demos both become the operator's own saved
+  // scenario — durable, cloud-synced, editable — not a read-only template.
+  const adoptScenario = (name, rawConfig, how) => {
+    const config = withThisOrigin(rawConfig);
+    applyConfig(config);
+    const next = { ...scenarios, [name]: config };
+    setScenarios(next);
+    store.set(SCENARIOS_KEY, next);
+    setActiveScenario(name);
+    addLog("ok", `Scenario "${name}" ${how} and loaded.`);
+    if (cloudSync !== "off") {
+      syncScenarioToCloud(name, config)
+        .then(() => addLog("ok", `Scenario "${name}" synced to your account ☁.`))
+        .catch(() => {});
+    }
+  };
+
   const importScenario = (file) => {
     const reader = new FileReader();
     reader.onload = () => {
       try {
         const parsed = JSON.parse(reader.result);
-        const name = (parsed.name || file.name.replace(/\.json$/i, "")).trim();
-        const config = parsed.config || parsed;
-        applyConfig(config);
-        const next = { ...scenarios, [name]: config };
-        setScenarios(next);
-        store.set(SCENARIOS_KEY, next);
-        setActiveScenario(name);
-        addLog("ok", `Scenario "${name}" imported and loaded.`);
-        // Imported files should become durable too, not stay browser-local.
-        if (cloudSync !== "off") {
-          syncScenarioToCloud(name, config)
-            .then(() => addLog("ok", `Scenario "${name}" synced to your account ☁.`))
-            .catch(() => {});
-        }
+        adoptScenario((parsed.name || file.name.replace(/\.json$/i, "")).trim(), parsed.config || parsed, "imported");
       } catch {
         addLog("err", "Import failed — that file isn't a valid scenario JSON.");
       }
@@ -8365,6 +8381,27 @@ export default function TavusExperienceBuilder() {
                   </div>
                 ));
               })()}
+              {STARTER_DEMOS.length > 0 && (
+                <div style={{ marginTop: 8, maxWidth: 760 }}>
+                  <div className="lib-group" style={{ padding: "0 2px 8px" }}>Starter demos</div>
+                  {STARTER_DEMOS.map((d) => (
+                    <div key={d.name} className="demolib-card">
+                      <div className="demolib-top">
+                        <span className="lib-name" style={{ fontSize: 15, cursor: "default" }}>{d.name}</span>
+                        <button className="pill-btn primary" style={{ padding: "4px 12px", fontSize: 12 }}
+                          onClick={() => {
+                            if (scenarios[d.name] && !window.confirm(`You already have “${d.name}”. Replace your copy with the original starter?`)) return;
+                            adoptScenario(d.name, d.config, "added from starters");
+                            if (d.desc && !scenMeta[d.name]?.desc) updateScenarioMeta(d.name, { desc: d.desc });
+                          }}>
+                          ＋ Add to my library
+                        </button>
+                      </div>
+                      {d.desc && <p className="field-hint" style={{ margin: "6px 0 0" }}>{d.desc}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
             </>
           )}
 
