@@ -80,6 +80,7 @@ export default function ApexApp() {
   // Public share link: no sign-in, no console state.
   const pub = path.match(/^\/meet\/([a-z]+)$/);
   if (pub) return <PublicMeet firm={pub[1]} />;
+  if (path === "/apex/score-preview") return <ScorePreview />;
   return <Signed path={path} />;
 }
 
@@ -559,10 +560,10 @@ function Room({ state, refresh }) {
           </CVIProvider>
         </div>
         {showFeed && (
-          <aside className="room-feed">
-            {sc && roomDeal?.props?.overall_score && <ScorecardPanel p={roomDeal.props} />}
+          <aside className={`room-feed ${sc ? "ih-side" : ""}`}>
             {sc && <ScoreStatus />}
-            {sc && <ScenarioBrief sc={sc} />}
+            {sc && roomDeal?.props?.overall_score && <ScorecardPanel p={roomDeal.props} />}
+            {sc && <ScenarioBrief sc={sc} compact={!!roomDeal?.props?.overall_score} />}
             <div className="muted" style={{ fontWeight: 600, marginBottom: 8 }}>What the AI did</div>
             <div className="feed">
               {feed.length === 0 && <div className="muted">Actions appear here as the avatar takes them.</div>}
@@ -641,7 +642,7 @@ function PublicMeet({ firm }) {
               {picked && <ScoreButton conversationId={call.conversationId} onResult={setCard} />}
             </CVIProvider>
           </div>
-          {picked && <aside className="room-feed">{card && <ScorecardPanel p={card} />}<ScoreStatus /><ScenarioBrief sc={picked} /></aside>}
+          {picked && <aside className="room-feed ih-side"><ScoreStatus />{card && <ScorecardPanel p={card} />}<ScenarioBrief sc={picked} compact={!!card} /></aside>}
         </div>
       </div>
     );
@@ -721,15 +722,40 @@ function ScenarioPicker({ scenarios, value, onChange }) {
   );
 }
 
-function ScenarioBrief({ sc }) {
+function ScenarioBrief({ sc, compact }) {
   return (
-    <div className="card stack" style={{ marginBottom: 12, padding: 12 }}>
-      <div className="muted" style={{ fontWeight: 600 }}>{sc.track}</div>
-      <div style={{ fontWeight: 600 }}>{sc.label}</div>
-      <div style={{ fontSize: 13 }}>{sc.brief}</div>
-      <div className="muted" style={{ fontWeight: 600, marginTop: 4 }}>You're scored on</div>
-      <ol style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>{sc.criteria.map((c) => <li key={c}>{c}</li>)}</ol>
-      <div className="muted" style={{ fontSize: 12 }}>Click "End scenario & score me" (top right of the video) when you're done.</div>
+    <div className="ih-card ih-brief">
+      <div className="ih-eyebrow">{sc.track}</div>
+      <div className="ih-title">{sc.label}</div>
+      <p className="ih-text">{sc.brief}</p>
+      {!compact && (
+        <>
+          <div className="ih-eyebrow" style={{ marginTop: 14 }}>You're scored on</div>
+          <div className="ih-chips">{sc.criteria.map((c, i) => <span key={c} className="ih-chip"><b>{i + 1}</b>{c}</span>)}</div>
+          <div className="ih-hint">Done? Hit <b>End scenario &amp; score me</b> on the video.</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* Design preview of the in-call scorecard with sample data (no call needed). */
+function ScorePreview() {
+  const sc = { track: "Resident service · Difficult customer", label: "Upset resident: repeat AC failure", brief: "You're the technician. Marcus's AC has failed three times in five weeks, it's 96°F inside and the last tech no-showed.", criteria: [] };
+  const p = {
+    overall_score: "78",
+    outcome: "Marcus calmed down and agreed to a same-day repair with portable units as a fallback.",
+    criteria_scores: "Acknowledges impact and empathizes: 5/5 - 'I'm really sorry, 96 degrees with Maya's asthma is not okay'; Takes ownership (no blaming): 4/5 - 'That no-show is on us'; Clear next steps and realistic commitments: 4/5 - laid out diagnosis now and portable units by 3pm; Stays calm and professional under pressure: 4/5 - steady tone when threatened with reviews; Escalates the credit request correctly (doesn't promise it): 2/5 - said 'I'll get you a credit' without supervisor sign-off",
+    strengths: "1) Named Maya and the heat specifically before talking about the repair. 2) Owned the no-show without blaming the vendor.",
+    improvements: "1) Don't promise the rent credit; try 'I'm putting in a credit request with my supervisor today and you'll hear back by Friday.' 2) Confirm a callback time before leaving.",
+  };
+  return (
+    <div className="room">
+      <header className="topbar"><div className="logo">INVITATION HOMES<span> · Training Simulator</span></div></header>
+      <div className="room-body with-feed">
+        <div className="room-stage"><div style={{ background: "#1b2a3a", borderRadius: 12 }} /><button className="primary score-btn"><span className="dot" />End scenario &amp; score me</button></div>
+        <aside className="room-feed ih-side"><ScorecardPanel p={p} /><ScenarioBrief sc={sc} compact /></aside>
+      </div>
     </div>
   );
 }
@@ -826,7 +852,7 @@ function ScoreButton({ conversationId, onResult }) {
 
   return (
     <button className="primary score-btn" disabled={busy} onClick={go}>
-      {busy ? "Scoring…" : "End scenario & score me"}
+      <span className="dot" />{busy ? "Scoring…" : "End scenario & score me"}
     </button>
   );
 }
@@ -839,24 +865,79 @@ function ScoreStatus() {
     return () => scoreBus.removeEventListener("s", on);
   }, []);
   if (!st || st.state === "done") return null;
-  return <div className={`pill ${st.state === "error" ? "bad" : ""}`} style={{ whiteSpace: "normal", marginBottom: 12 }}>
-    {st.state === "grading" ? "Grading your roleplay… (about 10 seconds)" : `Couldn't score: ${st.msg}`}
-  </div>;
+  if (st.state === "error") return <div className="ih-card ih-error">Couldn't score this run: {st.msg}</div>;
+  return (
+    <div className="ih-card ih-grading">
+      <div className="ih-spinner" />
+      <div>
+        <div className="ih-title" style={{ fontSize: 15 }}>Grading your roleplay…</div>
+        <div className="ih-text">Reviewing the conversation against each criterion.</div>
+      </div>
+    </div>
+  );
 }
 
+/* "Name: 4/5 - evidence" lines, newline- or semicolon-separated. */
+function parseCriteria(text = "") {
+  const parts = String(text).split(/\n+|;\s*(?=[^;:]{3,90}:\s*\d(?:\.\d)?\s*\/\s*5)/).map((x) => x.trim()).filter(Boolean);
+  const rows = parts.map((x) => {
+    const m = x.match(/^(?:\d+[.)]\s*)?(.+?):\s*(\d(?:\.\d)?)\s*\/\s*5\s*(?:[-–—:]\s*)?([\s\S]*)$/);
+    return m ? { name: m[1].trim(), score: Math.max(0, Math.min(5, Number(m[2]))), note: m[3].trim() } : null;
+  });
+  return rows.every(Boolean) ? rows : null;
+}
+const splitPoints = (t = "") => {
+  const parts = String(t).split(/\s*(?:\(\d\)|\b\d[.)])\s+|\n+|;\s+(?=[A-Z])/).map((x) => x.trim()).filter((x) => x.length > 3);
+  return parts.length ? parts : [String(t)];
+};
+const tone = (n, max) => (n / max >= 0.75 ? "good" : n / max >= 0.5 ? "mid" : "low");
+
 function ScorecardPanel({ p }) {
-  const n = Number(p.overall_score);
+  const n = Math.max(0, Math.min(100, Number(p.overall_score) || 0));
+  const rows = parseCriteria(p.criteria_scores);
+  const t = tone(n, 100);
   return (
-    <div className="card stack scorecard" style={{ marginBottom: 12, padding: 14 }}>
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <div style={{ fontWeight: 600 }}>Your scorecard</div>
-        <div className={`pill ${n >= 75 ? "ok" : n < 50 ? "bad" : ""}`} style={{ fontSize: 18, fontWeight: 700 }}>{p.overall_score}/100</div>
+    <div className="ih-card ih-score">
+      <div className="ih-score-head">
+        <div className={`ih-ring ${t}`} style={{ "--pct": n }}>
+          <div><b>{n}</b><span>/100</span></div>
+        </div>
+        <div>
+          <div className="ih-eyebrow">Your scorecard</div>
+          <div className="ih-title">{t === "good" ? "Strong run" : t === "mid" ? "Solid start" : "Needs another rep"}</div>
+          {p.outcome && <p className="ih-text">{p.outcome}</p>}
+        </div>
       </div>
-      {p.safety_flag && <div className="pill bad" style={{ whiteSpace: "normal" }}>Safety: {p.safety_flag}</div>}
-      {p.outcome && <div style={{ fontSize: 13 }}>{p.outcome}</div>}
-      {p.criteria_scores && <pre style={{ whiteSpace: "pre-wrap", margin: 0, fontFamily: "inherit", fontSize: 13 }}>{p.criteria_scores}</pre>}
-      {p.strengths && <div style={{ fontSize: 13 }}><b>Strengths:</b> {p.strengths}</div>}
-      {p.improvements && <div style={{ fontSize: 13 }}><b>Improve:</b> {p.improvements}</div>}
+
+      {p.safety_flag && <div className="ih-flag"><span>⚠</span><div><b>Safety</b>{p.safety_flag}</div></div>}
+
+      {rows ? (
+        <div className="ih-crit">
+          {rows.map((r) => (
+            <div key={r.name} className="ih-crit-row">
+              <div className="ih-crit-top">
+                <span>{r.name}</span>
+                <b className={tone(r.score, 5)}>{r.score}<i>/5</i></b>
+              </div>
+              <div className="ih-bar"><div className={tone(r.score, 5)} style={{ width: `${(r.score / 5) * 100}%` }} /></div>
+              {r.note && <div className="ih-note">{r.note}</div>}
+            </div>
+          ))}
+        </div>
+      ) : p.criteria_scores && <p className="ih-text">{p.criteria_scores}</p>}
+
+      {p.strengths && (
+        <div className="ih-callout good">
+          <div className="ih-eyebrow">What worked</div>
+          <ul>{splitPoints(p.strengths).map((x, i) => <li key={i}>{x}</li>)}</ul>
+        </div>
+      )}
+      {p.improvements && (
+        <div className="ih-callout fix">
+          <div className="ih-eyebrow">Try next time</div>
+          <ul>{splitPoints(p.improvements).map((x, i) => <li key={i}>{x}</li>)}</ul>
+        </div>
+      )}
     </div>
   );
 }
