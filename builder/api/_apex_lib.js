@@ -693,18 +693,55 @@ export async function runTool(name, args, s, toolCallId) {
     }
 
     case "record_training_scorecard": {
-      const props = Object.fromEntries(Object.entries(args).filter(([k]) => TRAINING_FIELDS[k]).map(([k, v]) => [k, str(v)]));
-      props.scenario = IH_SCENARIOS[s.scenario]?.label || props.scenario || "";
-      await updateProps(s.dealId, props);
-      await moveStage(s.dealId, "discovery_completed");
-      await addNote(s.dealId, `Scorecard: ${props.overall_score || "?"}/100`,
-        [props.outcome, props.criteria_scores && `\n${props.criteria_scores}`, props.strengths && `\nStrengths: ${props.strengths}`, props.improvements && `\nImprove: ${props.improvements}`, props.safety_flag && `\nSAFETY FLAG: ${props.safety_flag}`].filter(Boolean).join("\n"),
-        ["training", "ai-call"]);
-      await feed({ type: props.safety_flag ? "error" : "tool", title: `Scorecard saved: ${props.overall_score || "?"}/100`, detail: [props.criteria_scores, props.safety_flag && `Safety flag: ${props.safety_flag}`].filter(Boolean).join("\n"), conversationId: s.conversationId });
+      // The call-page "Get my scorecard" button grades the transcript itself; if that
+      // already ran, keep its result and let the avatar just give the spoken debrief.
+      const deal = await getDeal(s.dealId);
+      if (!deal?.props?.overall_score) await saveScorecard(s, args, "avatar");
       return GUIDE.record_training_scorecard;
     }
 
     default:
       throw new Error(`Unknown tool ${name}`);
   }
+}
+
+
+// ---- Training scorecards ---------------------------------------------------------
+
+export async function saveScorecard(s, raw, by = "grader") {
+  // Graders sometimes return arrays/objects for list fields; flatten to readable lines.
+  const flat = (v) => Array.isArray(v) ? v.map(flat).join("\n") : v && typeof v === "object" ? Object.entries(v).map(([k, x]) => `${k}: ${flat(x)}`).join("\n") : str(v);
+  const props = Object.fromEntries(Object.entries(raw || {}).filter(([k]) => TRAINING_FIELDS[k]).map(([k, v]) => [k, flat(v)]));
+  props.scenario = IH_SCENARIOS[s.scenario]?.label || props.scenario || "";
+  await updateProps(s.dealId, props);
+  await moveStage(s.dealId, "discovery_completed");
+  await addNote(s.dealId, `Scorecard: ${props.overall_score || "?"}/100`,
+    [props.outcome, props.criteria_scores && `\n${props.criteria_scores}`, props.strengths && `\nStrengths: ${props.strengths}`, props.improvements && `\nImprove: ${props.improvements}`, props.safety_flag && `\nSAFETY FLAG: ${props.safety_flag}`].filter(Boolean).join("\n"),
+    ["training", by]);
+  await feed({ type: props.safety_flag ? "error" : "tool", title: `Scorecard saved: ${props.overall_score || "?"}/100`, detail: [props.criteria_scores, props.safety_flag && `Safety flag: ${props.safety_flag}`].filter(Boolean).join("\n"), conversationId: s.conversationId });
+  return props;
+}
+
+/* Grades a roleplay transcript against the scenario criteria with Claude, so the
+   scorecard never depends on the avatar remembering to call its tool. */
+export async function gradeTranscript(scenarioKey, traineeName, lines) {
+  const sc = IH_SCENARIOS[scenarioKey] || IH_SCENARIOS.hvac;
+  const transcript = [`CHARACTER: ${sc.greeting}`, ...lines.map((l) => `${l.role === "user" ? "TRAINEE" : "CHARACTER"}: ${l.text}`)].join("\n").slice(-24000);
+  if (!lines.some((l) => l.role === "user")) throw new Error("No trainee speech captured yet. Talk to the character first.");
+  const { default: Anthropic } = await import("@anthropic-ai/sdk");
+  const client = new Anthropic();
+  const system =
+    "You are a strict, fair training coach at Invitation Homes grading a recorded roleplay. Score only from what the TRAINEE actually said. " +
+    "5 = textbook, 3 = acceptable with clear gaps, 1 = missing or harmful. A trainee who argued, made promises they can't keep, or skipped a safety step scores 3 or lower on that criterion. " +
+    "Lines after the trainee asked to end the scenario or for feedback are not part of the roleplay. " +
+    'Reply with ONLY a JSON object: {"overall_score": "0-100 as a string", "criteria_scores": "one line per criterion: Name: N/5 - evidence quoting the trainee", "strengths": "two specific strengths quoting the trainee", "improvements": "two specific improvements, each with a better line they could have said", "safety_flag": "a missed safety step, or empty string", "outcome": "one sentence on how the scene ended"}';
+  const user = `SCENARIO: ${sc.label}\nTRAINEE ROLE: ${traineeName}, ${sc.trainee}\nCHARACTER BRIEF: ${sc.character}\nCRITERIA:\n${sc.criteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}\n\nTRANSCRIPT:\n${transcript}`;
+  let msg;
+  for (const model of ["claude-opus-4-8", "claude-haiku-4-5-20251001"]) {
+    try { msg = await client.messages.create({ model, max_tokens: 1500, system, messages: [{ role: "user", content: user }] }); break; }
+    catch (e) { if (model.startsWith("claude-haiku")) throw e; }
+  }
+  const text = msg.content.map((b) => b.text || "").join("");
+  const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
+  return JSON.parse(json);
 }

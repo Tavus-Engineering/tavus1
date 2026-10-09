@@ -38,6 +38,7 @@ export default async function handler(req, res) {
       case "public_info": return await publicInfo(req, res);
       case "public_start": return await publicStart(req, res);
       case "public_end": return await publicEnd(req, res);
+      case "score": return await score(req, res);
     }
     if (!isAuthed(req)) { res.status(401).json({ error: "Sign in to the builder first (open the home page), then come back to /apex." }); return; }
     switch (op) {
@@ -203,6 +204,26 @@ async function publicEnd(req, res) {
   res.status(200).json({ ok: true });
 }
 
+// Invitation Homes: grade the roleplay from the transcript the call page captured.
+// Public (the share link uses it too); the credential is a live training session id.
+async function score(req, res) {
+  if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+  const id = String(req.body?.conversationId || "");
+  const s = await A.getSession(id);
+  if (!s || s.firm !== "invitationhomes") { res.status(404).json({ error: "Training session not found." }); return; }
+  if ((await A.incr(`apex:rl:score:${id}`, 7200)) > 6) { res.status(429).json({ error: "Scorecard limit reached for this session." }); return; }
+  const lines = (Array.isArray(req.body?.transcript) ? req.body.transcript : [])
+    .map((l) => ({ role: l?.role === "user" ? "user" : "replica", text: String(l?.text || "").slice(0, 2000) }))
+    .filter((l) => l.text).slice(-120);
+  try {
+    const graded = await A.gradeTranscript(s.scenario, s.prospectName, lines);
+    res.status(200).json({ scorecard: await A.saveScorecard(s, graded, "grader") });
+  } catch (e) {
+    await A.feed({ type: "error", title: "Scorecard grading failed", detail: e.message, conversationId: id });
+    res.status(502).json({ error: e.message || "Grading failed" });
+  }
+}
+
 async function end(req, res) {
   if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
   const id = await A.getActiveId();
@@ -275,6 +296,15 @@ async function webhook(req, res) {
     case "application.transcription_ready": {
       const t = data.properties?.transcript ?? [];
       await A.feed({ type: "tavus", title: "Transcript ready", detail: `${t.filter((m) => m.role !== "system").length} turns`, conversationId: id });
+      // Training call that ended without a scorecard: grade it now from Tavus's transcript.
+      if (s.firm === "invitationhomes" && !(await A.getDeal(s.dealId))?.props?.overall_score) {
+        try {
+          const lines = t.filter((m) => m.role === "user" || m.role === "assistant").map((m) => ({ role: m.role === "user" ? "user" : "replica", text: String(m.content || "") }));
+          await A.saveScorecard(s, await A.gradeTranscript(s.scenario, s.prospectName, lines), "grader");
+        } catch (e) {
+          await A.feed({ type: "error", title: "Post-call scorecard failed", detail: e.message, conversationId: id });
+        }
+      }
       break;
     }
     default:

@@ -540,6 +540,7 @@ function Room({ state, refresh }) {
 
   const feed = (state.feed ?? []).filter((e) => e.conversationId === active.conversationId).slice().reverse();
   const sc = active.firm === "invitationhomes" ? state.config?.scenarios?.[active.scenario] : null;
+  const roomDeal = state.deals.find((d) => d.id === active.dealId);
   return (
     <div className="room">
       <header className="topbar">
@@ -554,10 +555,13 @@ function Room({ state, refresh }) {
           <CVIProvider>
             <Conversation conversationUrl={active.conversationUrl} onLeave={leave} />
             <AutoAdvance conversationId={active.conversationId} />
+            {sc && <ScoreButton conversationId={active.conversationId} onResult={refresh} />}
           </CVIProvider>
         </div>
         {showFeed && (
           <aside className="room-feed">
+            {sc && roomDeal?.props?.overall_score && <ScorecardPanel p={roomDeal.props} />}
+            {sc && <ScoreStatus />}
             {sc && <ScenarioBrief sc={sc} />}
             <div className="muted" style={{ fontWeight: 600, marginBottom: 8 }}>What the AI did</div>
             <div className="feed">
@@ -588,6 +592,7 @@ function PublicMeet({ firm }) {
   const [phase, setPhase] = useState("form"); // form | call | done
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const [card, setCard] = useState(null);
 
   useEffect(() => {
     fetch(`${API("public_info")}&firm=${firm}`).then(async (r) => {
@@ -633,9 +638,10 @@ function PublicMeet({ firm }) {
             <CVIProvider>
               <Conversation conversationUrl={call.conversationUrl} onLeave={leave} />
               <AutoAdvance conversationId={call.conversationId} />
+              {picked && <ScoreButton conversationId={call.conversationId} onResult={setCard} />}
             </CVIProvider>
           </div>
-          {picked && <aside className="room-feed"><ScenarioBrief sc={picked} /></aside>}
+          {picked && <aside className="room-feed">{card && <ScorecardPanel p={card} />}<ScoreStatus /><ScenarioBrief sc={picked} /></aside>}
         </div>
       </div>
     );
@@ -648,8 +654,9 @@ function PublicMeet({ firm }) {
         {phase === "done" ? (
           <>
             <h1>Thanks for your time{form.firstname ? `, ${form.firstname}` : ""}.</h1>
+            {training && card && <ScorecardPanel p={card} />}
             <p className="muted">{training ? "Your scorecard has been saved to your training record." : `If you booked a follow-up, the invite is on its way to ${form.email || "your inbox"}.`}</p>
-            {training && <button className="primary" onClick={() => { setCall(null); setPhase("form"); }}>Run another scenario</button>}
+            {training && <button className="primary" onClick={() => { setCall(null); setCard(null); setPhase("form"); }}>Run another scenario</button>}
           </>
         ) : err && !info ? (
           <>
@@ -722,7 +729,7 @@ function ScenarioBrief({ sc }) {
       <div style={{ fontSize: 13 }}>{sc.brief}</div>
       <div className="muted" style={{ fontWeight: 600, marginTop: 4 }}>You're scored on</div>
       <ol style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>{sc.criteria.map((c) => <li key={c}>{c}</li>)}</ol>
-      <div className="muted" style={{ fontSize: 12 }}>Say "end scenario" any time for your scorecard.</div>
+      <div className="muted" style={{ fontSize: 12 }}>Click "End scenario & score me" (top right of the video) when you're done.</div>
     </div>
   );
 }
@@ -765,6 +772,92 @@ function Training({ state }) {
         })}
       </main>
     </>
+  );
+}
+
+// Scorecard: the call page records both sides' speech and, on click, asks the server to
+// grade it (api op=score) while cueing the avatar to step out of character and debrief.
+// Doesn't depend on the avatar calling its tool.
+
+const scoreBus = new EventTarget();
+
+function ScoreButton({ conversationId, onResult }) {
+  const daily = useDaily();
+  const lines = React.useRef([]);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!daily) return;
+    const onMsg = (e) => {
+      const d = e?.data;
+      if (!/^conversation\.utterance$/i.test(d?.event_type || "")) return;
+      const role = String(d.properties?.role ?? "").toLowerCase() === "user" ? "user" : "replica";
+      const text = String(d.properties?.speech ?? d.properties?.text ?? "").trim();
+      if (!text) return;
+      const last = lines.current[lines.current.length - 1];
+      // Utterances can re-emit cumulatively within a turn: replace, don't stack.
+      if (last && last.role === role && (text.startsWith(last.text) || last.text.startsWith(text))) last.text = text.length > last.text.length ? text : last.text;
+      else lines.current.push({ role, text });
+    };
+    daily.on("app-message", onMsg);
+    return () => daily.off("app-message", onMsg);
+  }, [daily]);
+
+  async function go() {
+    setBusy(true);
+    scoreBus.dispatchEvent(new CustomEvent("s", { detail: { state: "grading" } }));
+    const transcript = lines.current.map((l) => ({ ...l }));
+    try {
+      daily?.sendAppMessage({ message_type: "conversation", event_type: "conversation.respond", conversation_id: conversationId,
+        properties: { text: "End scenario. Step out of character and give me my coaching debrief." } }, "*");
+    } catch { /* room gone */ }
+    try {
+      const r = await fetch(API("score"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationId, transcript }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || `Error ${r.status}`);
+      onResult?.(j.scorecard);
+      scoreBus.dispatchEvent(new CustomEvent("s", { detail: { state: "done" } }));
+    } catch (e) {
+      scoreBus.dispatchEvent(new CustomEvent("s", { detail: { state: "error", msg: e.message } }));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button className="primary score-btn" disabled={busy} onClick={go}>
+      {busy ? "Scoring…" : "End scenario & score me"}
+    </button>
+  );
+}
+
+function ScoreStatus() {
+  const [st, setSt] = useState(null);
+  useEffect(() => {
+    const on = (e) => setSt(e.detail);
+    scoreBus.addEventListener("s", on);
+    return () => scoreBus.removeEventListener("s", on);
+  }, []);
+  if (!st || st.state === "done") return null;
+  return <div className={`pill ${st.state === "error" ? "bad" : ""}`} style={{ whiteSpace: "normal", marginBottom: 12 }}>
+    {st.state === "grading" ? "Grading your roleplay… (about 10 seconds)" : `Couldn't score: ${st.msg}`}
+  </div>;
+}
+
+function ScorecardPanel({ p }) {
+  const n = Number(p.overall_score);
+  return (
+    <div className="card stack scorecard" style={{ marginBottom: 12, padding: 14 }}>
+      <div className="row" style={{ justifyContent: "space-between" }}>
+        <div style={{ fontWeight: 600 }}>Your scorecard</div>
+        <div className={`pill ${n >= 75 ? "ok" : n < 50 ? "bad" : ""}`} style={{ fontSize: 18, fontWeight: 700 }}>{p.overall_score}/100</div>
+      </div>
+      {p.safety_flag && <div className="pill bad" style={{ whiteSpace: "normal" }}>Safety: {p.safety_flag}</div>}
+      {p.outcome && <div style={{ fontSize: 13 }}>{p.outcome}</div>}
+      {p.criteria_scores && <pre style={{ whiteSpace: "pre-wrap", margin: 0, fontFamily: "inherit", fontSize: 13 }}>{p.criteria_scores}</pre>}
+      {p.strengths && <div style={{ fontSize: 13 }}><b>Strengths:</b> {p.strengths}</div>}
+      {p.improvements && <div style={{ fontSize: 13 }}><b>Improve:</b> {p.improvements}</div>}
+    </div>
   );
 }
 
