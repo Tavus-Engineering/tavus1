@@ -101,6 +101,7 @@ function Signed({ path }) {
   if (path === "/apex/room") return <Room {...app} />;
   if (path === "/apex/crm") return <DealsBoard {...app} />;
   if (path === "/apex/crm/tasks") return <Tasks {...app} />;
+  if (path === "/apex/training") return <Training {...app} />;
   const m = path.match(/^\/apex\/crm\/deals\/([^/]+)$/);
   if (m) return <DealRecord id={decodeURIComponent(m[1])} {...app} />;
   return <Console {...app} />;
@@ -109,7 +110,7 @@ function Signed({ path }) {
 // ---- Console ------------------------------------------------------------------
 
 function Console({ state, refresh }) {
-  const [form, setForm] = useState({ meetingUrl: "", firstname: "Tim", lastname: "", email: "tim@tavus.io", firm: "apex", mode: "room" });
+  const [form, setForm] = useState({ meetingUrl: "", firstname: "Tim", lastname: "", email: "tim@tavus.io", firm: "apex", mode: "room", scenario: "hvac" });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
 
@@ -156,8 +157,17 @@ function Console({ state, refresh }) {
                 <button className={form.firm === "corpdev" ? "on" : ""} onClick={() => setForm({ ...form, firm: "corpdev" })}>
                   <b>Optimize Corp Dev</b><span>Advisor recruiting intro · 30-40 min</span>
                 </button>
+                <button className={form.firm === "invitationhomes" ? "on" : ""} onClick={() => setForm({ ...form, firm: "invitationhomes", mode: "room" })}>
+                  <b>Invitation Homes</b><span>Training roleplay + scorecard · 5-10 min</span>
+                </button>
               </div>
             </div>
+            {form.firm === "invitationhomes" && cfg?.scenarios && (
+              <div>
+                <label>Scenario</label>
+                <ScenarioPicker scenarios={cfg.scenarios} value={form.scenario} onChange={(scenario) => setForm({ ...form, scenario })} />
+              </div>
+            )}
             <div>
               <label>Where</label>
               <div className="seg">
@@ -178,7 +188,7 @@ function Console({ state, refresh }) {
             )}
             <div className="row" style={{ flexWrap: "nowrap" }}>
               <div style={{ flex: 1 }}>
-                <label>{form.firm === "corpdev" ? "Advisor first name" : "Prospect first name"}</label>
+                <label>{form.firm === "corpdev" ? "Advisor first name" : form.firm === "invitationhomes" ? "Trainee first name" : "Prospect first name"}</label>
                 <input value={form.firstname} onChange={(e) => setForm({ ...form, firstname: e.target.value })} />
               </div>
               <div style={{ flex: 1 }}>
@@ -187,12 +197,12 @@ function Console({ state, refresh }) {
               </div>
             </div>
             <div>
-              <label>{form.firm === "corpdev" ? "Advisor email" : "Prospect email"} (gets the calendar invite)</label>
+              <label>{form.firm === "corpdev" ? "Advisor email (gets the calendar invite)" : form.firm === "invitationhomes" ? "Trainee email (training record)" : "Prospect email (gets the calendar invite)"}</label>
               <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value.trim() })} />
             </div>
             <div className="row">
               <button className="primary" disabled={busy || !!active} onClick={() => call("start", form)}>
-                Send {form.firm === "optimize" ? "Optimize" : form.firm === "corpdev" ? "Corp Dev" : "Apex"} in
+                {form.firm === "invitationhomes" ? "Start training" : `Send ${form.firm === "optimize" ? "Optimize" : form.firm === "corpdev" ? "Corp Dev" : "Apex"} in`}
               </button>
               <button className="danger" disabled={busy || !active} onClick={() => call("end")}>End call</button>
               {active?.mode === "room" && active.status !== "ended" && <A href="/apex/room">Rejoin call page →</A>}
@@ -272,10 +282,11 @@ function Check({ ok, label }) {
 function TopBar({ section }) {
   return (
     <header className="topbar">
-      <div className="logo">APEX WEALTH ADVISORY <span>· {section === "crm" ? "CRM" : "Live Call Console"}</span></div>
+      <div className="logo">APEX WEALTH ADVISORY <span>· {section === "crm" ? "CRM" : section === "training" ? "Training Records" : "Live Call Console"}</span></div>
       <nav>
         <A href="/apex" className={section === "console" ? "on" : ""}>Console</A>
         <A href="/apex/crm" className={section === "crm" ? "on" : ""}>CRM</A>
+        <A href="/apex/training" className={section === "training" ? "on" : ""}>Training</A>
       </nav>
     </header>
   );
@@ -306,11 +317,11 @@ function DealsBoard({ state }) {
     <CrmShell section="deals">
       <div className="row" style={{ justifyContent: "space-between", marginBottom: 14 }}>
         <h1 style={{ fontSize: 20, margin: 0 }}>Deals · Advisory Pipeline</h1>
-        <span className="muted">{state ? `${state.deals.length} deals` : "Loading…"}</span>
+        <span className="muted">{state ? `${state.deals.filter((d) => d.firm !== "invitationhomes").length} deals` : "Loading…"}</span>
       </div>
       <div className="board">
         {state?.stages.map((st) => {
-          const deals = state.deals.filter((d) => d.stage === st.id);
+          const deals = state.deals.filter((d) => d.stage === st.id && d.firm !== "invitationhomes");
           return (
             <div className="col" key={st.id}>
               <h3>{st.label} <span>{deals.length}</span></h3>
@@ -372,6 +383,12 @@ function DealRecord({ id, state }) {
               <>
                 <div className="muted" style={{ marginTop: 14, fontWeight: 600 }}>Dealer Analysis Report inputs</div>
                 {Object.entries(state.config?.advisorFields || {}).map(([k, l]) => <Prop key={k} k={l} v={deal.props[k]} custom />)}
+              </>
+            )}
+            {deal.firm === "invitationhomes" && (
+              <>
+                <div className="muted" style={{ marginTop: 14, fontWeight: 600 }}>Training scorecard</div>
+                {Object.entries(state.config?.trainingFields || {}).map(([k, l]) => <Prop key={k} k={l} v={deal.props[k]} custom />)}
               </>
             )}
             {deal.firm === "optimize" && (
@@ -522,13 +539,14 @@ function Room({ state, refresh }) {
   }
 
   const feed = (state.feed ?? []).filter((e) => e.conversationId === active.conversationId).slice().reverse();
+  const sc = active.firm === "invitationhomes" ? state.config?.scenarios?.[active.scenario] : null;
   return (
     <div className="room">
       <header className="topbar">
         <div className="logo">{firmLabel.toUpperCase()} <span>· {active.prospectName}</span></div>
         <nav>
           <a href="#" onClick={(e) => { e.preventDefault(); setShowFeed((v) => !v); }}>{showFeed ? "Hide" : "Show"} AI activity</a>
-          <A href="/apex/crm" target="_blank">CRM ↗</A>
+          {sc ? <A href="/apex/training" target="_blank">Training records ↗</A> : <A href="/apex/crm" target="_blank">CRM ↗</A>}
         </nav>
       </header>
       <div className={`room-body ${showFeed ? "with-feed" : ""}`}>
@@ -540,6 +558,7 @@ function Room({ state, refresh }) {
         </div>
         {showFeed && (
           <aside className="room-feed">
+            {sc && <ScenarioBrief sc={sc} />}
             <div className="muted" style={{ fontWeight: 600, marginBottom: 8 }}>What the AI did</div>
             <div className="feed">
               {feed.length === 0 && <div className="muted">Actions appear here as the avatar takes them.</div>}
@@ -564,7 +583,7 @@ function Room({ state, refresh }) {
 
 function PublicMeet({ firm }) {
   const [info, setInfo] = useState(null);
-  const [form, setForm] = useState({ firstname: "", lastname: "", email: "" });
+  const [form, setForm] = useState({ firstname: "", lastname: "", email: "", scenario: "hvac" });
   const [call, setCall] = useState(null);
   const [phase, setPhase] = useState("form"); // form | call | done
   const [busy, setBusy] = useState(false);
@@ -603,17 +622,20 @@ function PublicMeet({ firm }) {
   }, [call]);
 
   const label = info?.label || "";
+  const training = info?.audience === "trainee";
+  const picked = training ? info.scenarios.find((x) => x.id === form.scenario) : null;
   if (phase === "call" && call?.conversationUrl) {
     return (
       <div className="room">
-        <header className="topbar"><div className="logo">{label.toUpperCase()}</div></header>
-        <div className="room-body">
+        <header className="topbar"><div className="logo">{label.toUpperCase()}{training && <span> · Training Simulator</span>}</div></header>
+        <div className={`room-body ${picked ? "with-feed" : ""}`}>
           <div className="room-stage">
             <CVIProvider>
               <Conversation conversationUrl={call.conversationUrl} onLeave={leave} />
               <AutoAdvance conversationId={call.conversationId} />
             </CVIProvider>
           </div>
+          {picked && <aside className="room-feed"><ScenarioBrief sc={picked} /></aside>}
         </div>
       </div>
     );
@@ -626,7 +648,8 @@ function PublicMeet({ firm }) {
         {phase === "done" ? (
           <>
             <h1>Thanks for your time{form.firstname ? `, ${form.firstname}` : ""}.</h1>
-            <p className="muted">If you booked a follow-up, the invite is on its way to {form.email || "your inbox"}.</p>
+            <p className="muted">{training ? "Your scorecard has been saved to your training record." : `If you booked a follow-up, the invite is on its way to ${form.email || "your inbox"}.`}</p>
+            {training && <button className="primary" onClick={() => { setCall(null); setPhase("form"); }}>Run another scenario</button>}
           </>
         ) : err && !info ? (
           <>
@@ -637,8 +660,14 @@ function PublicMeet({ firm }) {
           <form onSubmit={start} className="stack">
             <h1>{info?.headline || "Meet your portfolio manager"}</h1>
             <p className="muted">
-              A live video conversation{info ? ` (about ${info.minutes} minutes)` : ""}. Allow camera and microphone when your browser asks.
+              {training ? "Practice a real conversation with a live AI roleplay partner, then get an instant scorecard and coaching. About 5-10 minutes." : `A live video conversation${info ? ` (about ${info.minutes} minutes)` : ""}.`} Allow camera and microphone when your browser asks.
             </p>
+            {training && (
+              <div>
+                <label>Pick a scenario</label>
+                <ScenarioPicker scenarios={Object.fromEntries(info.scenarios.map((x) => [x.id, x]))} value={form.scenario} onChange={(scenario) => setForm({ ...form, scenario })} />
+              </div>
+            )}
             <div className="row" style={{ flexWrap: "nowrap" }}>
               <div style={{ flex: 1 }}>
                 <label>First name</label>
@@ -653,15 +682,89 @@ function PublicMeet({ firm }) {
               <label>Email</label>
               <input required type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value.trim() })} />
             </div>
-            <button className="primary" disabled={busy || !info}>{busy ? "Starting…" : "Start the conversation"}</button>
+            <button className="primary" disabled={busy || !info}>{busy ? "Starting…" : training ? "Start the roleplay" : "Start the conversation"}</button>
             {err && <div className="pill bad" style={{ whiteSpace: "normal" }}>{err}</div>}
             <p className="muted" style={{ fontSize: 12 }}>
-              You'll be speaking with an AI avatar{info?.audience === "advisor" ? " from Optimize Corporate Development" : ""}. Past performance is not indicative of future results.
+              {training
+                ? "You'll be speaking with an AI roleplay partner. Scenarios are fictional and for practice only; follow your actual company policies in the field. Say \"end scenario\" any time to get your scorecard."
+                : `You'll be speaking with an AI avatar${info?.audience === "advisor" ? " from Optimize Corporate Development" : ""}. Past performance is not indicative of future results.`}
             </p>
           </form>
         )}
       </div>
     </div>
+  );
+}
+
+// ---- Invitation Homes training simulator -------------------------------------------
+
+function ScenarioPicker({ scenarios, value, onChange }) {
+  const cur = scenarios[value];
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <div className="seg">
+        {Object.entries(scenarios).map(([id, x]) => (
+          <button key={id} type="button" className={value === id ? "on" : ""} onClick={() => onChange(id)}>
+            <b>{x.label}</b><span>{x.track}</span>
+          </button>
+        ))}
+      </div>
+      {cur && <div className="muted" style={{ fontSize: 13 }}>{cur.brief}</div>}
+    </div>
+  );
+}
+
+function ScenarioBrief({ sc }) {
+  return (
+    <div className="card stack" style={{ marginBottom: 12, padding: 12 }}>
+      <div className="muted" style={{ fontWeight: 600 }}>{sc.track}</div>
+      <div style={{ fontWeight: 600 }}>{sc.label}</div>
+      <div style={{ fontSize: 13 }}>{sc.brief}</div>
+      <div className="muted" style={{ fontWeight: 600, marginTop: 4 }}>You're scored on</div>
+      <ol style={{ margin: 0, paddingLeft: 18, fontSize: 13 }}>{sc.criteria.map((c) => <li key={c}>{c}</li>)}</ol>
+      <div className="muted" style={{ fontSize: 12 }}>Say "end scenario" any time for your scorecard.</div>
+    </div>
+  );
+}
+
+function Training({ state }) {
+  const rows = (state?.deals ?? []).filter((d) => d.firm === "invitationhomes").sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return (
+    <>
+      <TopBar section="training" />
+      <div className="sandbox-banner">Invitation Homes Training Simulator. Each session's scorecard is written by the AI roleplay partner at the end of the scenario.</div>
+      <main className="wrap stack">
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <h1 style={{ fontSize: 20, margin: 0 }}>Training records</h1>
+          <span className="muted">{state ? `${rows.length} session${rows.length === 1 ? "" : "s"}` : "Loading…"}</span>
+        </div>
+        {state && rows.length === 0 && <div className="card muted">No sessions yet. Start one from the Console (Invitation Homes) or the share link /meet/invitationhomes.</div>}
+        {rows.map((d) => {
+          const c = state.contacts[d.contactId];
+          const p = d.props;
+          return (
+            <section key={d.id} className="card stack">
+              <div className="row" style={{ justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontWeight: 600 }}>{c ? `${c.firstname} ${c.lastname}`.trim() : "Trainee"} · {d.product}</div>
+                  <div className="muted">{fmtDateTime(d.createdAt)} · {c?.email}</div>
+                </div>
+                <div className="row" style={{ gap: 8 }}>
+                  {p.safety_flag && <span className="pill bad">Safety flag</span>}
+                  <span className={`pill ${p.overall_score ? (Number(p.overall_score) >= 75 ? "ok" : "") : ""}`} style={{ fontSize: 15 }}>{p.overall_score ? `${p.overall_score}/100` : "in progress"}</span>
+                </div>
+              </div>
+              {p.outcome && <div>{p.outcome}</div>}
+              {p.criteria_scores && <pre style={{ whiteSpace: "pre-wrap", margin: 0, fontFamily: "inherit", fontSize: 13 }}>{p.criteria_scores}</pre>}
+              {p.strengths && <div><b>Strengths:</b> {p.strengths}</div>}
+              {p.improvements && <div><b>Improve:</b> {p.improvements}</div>}
+              {p.safety_flag && <div className="pill bad" style={{ whiteSpace: "normal" }}>{p.safety_flag}</div>}
+              <A href={`/apex/crm/deals/${d.id}`}>Full record →</A>
+            </section>
+          );
+        })}
+      </main>
+    </>
   );
 }
 

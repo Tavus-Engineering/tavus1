@@ -212,8 +212,81 @@ export const FIRMS = {
     taskTitle: "Follow-up: Dealer Analysis Report review (meeting 2 of 4)",
     taskBody: (name) => `Prepare ${name}'s Dealer Analysis Report from the intro-meeting profile and send investment info, firm overview and sample statements beforehand. Send the advisor testimonial video links.`,
   },
+  invitationhomes: {
+    label: "Invitation Homes",
+    palId: process.env.IH_PAL_ID || "p5250d043111",
+    faceId: process.env.IH_FACE_ID || "re3fd4adeafd",
+    product: "Training Simulator",
+    greeting: (first, scenario) => (IH_SCENARIOS[scenario] || IH_SCENARIOS.hvac).greeting,
+    minutes: 0,
+  },
 };
 export const firmOf = (s) => FIRMS[s?.firm] || FIRMS.apex;
+
+// ---- Invitation Homes training simulator --------------------------------------
+// One PAL plays every scenario; the character sheet rides conversational_context
+// per launch, so adding a scenario is a new entry here, not a new PAL.
+
+export const IH_SCENARIOS = {
+  hvac: {
+    label: "Upset resident: repeat AC failure",
+    track: "Resident service · Difficult customer",
+    trainee: "an Invitation Homes maintenance technician arriving at the home for the repair",
+    brief: "You're the technician. Marcus's AC has failed three times in five weeks, it's 96°F inside and the last tech no-showed. Calm him down, own it, and leave him with a realistic plan.",
+    greeting: "Oh, so somebody actually showed up this time. You know it's ninety-six degrees in my daughter's room right now?",
+    character:
+      "You are Marcus Bell, 38, an Invitation Homes resident for two years in a four-bedroom home in Phoenix. Your AC has failed three times in five weeks; it's 96 degrees inside, your seven-year-old daughter Maya has asthma, you've taken two unpaid days off work waiting for techs, and the last tech no-showed on Tuesday with no call. You're exhausted and angry, not violent. " +
+      "What you want: working AC today, someone to actually own the problem, and a rent credit. Pressure you apply: threaten to break your lease, post on Google and Nextdoor, and call corporate. " +
+      "You escalate when the trainee cites policy, blames the vendor or 'the system', says 'I just do the repairs', talks over you, or promises a rent credit they can't authorize (call that out later if it doesn't happen). " +
+      "You de-escalate, gradually over two or three turns, when they acknowledge Maya and the heat specifically, apologize for the no-show without excuses, take ownership, explain what they'll check right now, offer a real fallback if it can't be fixed today (like portable units), and route the credit request to a supervisor with a timeline. Once genuinely heard, you soften and say thanks.",
+    criteria: ["Acknowledges impact and empathizes", "Takes ownership (no blaming)", "Clear next steps and realistic commitments", "Stays calm and professional under pressure", "Escalates the credit request correctly (doesn't promise it)"],
+  },
+  safety: {
+    label: "Home entry: resident escalates",
+    track: "Field operations · Safety protocol",
+    trainee: "an Invitation Homes service technician at the front door for a scheduled ProCare preventive maintenance visit",
+    brief: "You're at the door for a scheduled ProCare visit. Ray says nobody told him and gets more agitated the harder you push. Your safety comes first: read the warning signs, de-escalate, and know when to leave.",
+    greeting: "Yeah? Who are you? Nobody told me anybody was coming today.",
+    character:
+      "You are Ray Dawson, 45, an Invitation Homes resident. A technician is at your front door for a scheduled ProCare preventive maintenance visit; a notice went out through the resident app two days ago but you never saw it. You were laid off last week, you're stressed and suspicious, and you're standing in the doorway. " +
+      "You escalate when the trainee insists on coming in, quotes the lease or entry rights, steps closer, argues about the notice, or gets defensive. At the peak, say once, in a low, tense voice, that you don't want strangers in your house, that you keep a firearm for your family's protection, and that they need to leave. That is an implied threat only: never describe a weapon, never say you're holding one, never threaten an action in detail. " +
+      "You de-escalate when the trainee keeps a calm, low voice, keeps their distance, says they won't come in, acknowledges you didn't get the notice, offers to reschedule at a time that works for you, and leaves. If they handle it well, you calm down and grudgingly apologize. If they keep pushing after the firearm line, stay tense and repeat that they need to go. " +
+      "End the scene once the trainee has left or says they're walking away.",
+    criteria: ["Recognizes warning signs and keeps a safe distance", "Does not enter or argue entry rights once tension rises", "Calm, de-escalating tone and language", "Disengages safely (offers to reschedule, leaves)", "States they'll report the incident to their supervisor (911 if a threat is imminent)"],
+  },
+  leasing: {
+    label: "Leasing tour: price and rent-vs-buy objections",
+    track: "Leasing · Sales roleplay",
+    trainee: "an Invitation Homes leasing agent meeting a prospect at a three-bedroom listing",
+    brief: "You're showing a three-bedroom home. Chris has fifteen minutes, saw a cheaper place two streets over, has a big dog, and is half-thinking about buying instead. Find out what matters to them, handle the objections, and land a next step.",
+    greeting: "Hi, thanks for meeting me. I'll be upfront, I've only got about fifteen minutes, and we saw a place two streets over that's cheaper.",
+    character:
+      "You are Chris Alvarez, 34, touring a three-bedroom single-family rental listed at 2,450 dollars a month. You're married with two kids (8 and 5) and a seventy-pound lab named Biscuit; your current lease ends in six weeks. Objections, raised naturally one at a time: a similar home two streets over is listed 200 dollars cheaper; you're worried about pet fees; you've read online reviews saying maintenance is slow at big rental companies; and you're half-thinking you should just buy instead of renting. " +
+      "Hidden motivations you reveal only if asked good discovery questions: the kids' school district matters most, your spouse travels for work so you hate handling repairs alone, and you don't have a down payment saved yet. " +
+      "You warm up when the trainee asks about your needs before pitching, ties value to what you told them, answers the reviews concern honestly, and is straight about renting versus buying. You cool off at pushy closing, discounting without being asked, or vague answers. If they've done well by the end, agree to a concrete next step such as starting an application or holding the home; otherwise say you'll think about it.",
+    criteria: ["Discovery before pitching", "Handles price with value, not discounts", "Honest rent-versus-buy conversation", "Addresses the maintenance-reviews concern credibly", "Clear close and next step"],
+  },
+};
+
+export const ihContext = (scenarioKey, traineeName) => {
+  const sc = IH_SCENARIOS[scenarioKey] || IH_SCENARIOS.hvac;
+  return (
+    `SCENARIO: ${sc.label}. The trainee, ${traineeName}, is playing ${sc.trainee}. ` +
+    `YOUR CHARACTER: ${sc.character} ` +
+    `Your first line already played: "${sc.greeting}" Continue from there in character. ` +
+    `SCORING CRITERIA for the scorecard (score each out of 5): ${sc.criteria.map((c, i) => `${i + 1}. ${c}`).join("; ")}.`
+  );
+};
+
+export const TRAINING_FIELDS = {
+  scenario: "Scenario",
+  outcome: "Outcome",
+  overall_score: "Overall score",
+  criteria_scores: "Criteria scores",
+  strengths: "Strengths",
+  improvements: "Improvements",
+  safety_flag: "Safety flag",
+};
 
 // ---- CRM sandbox (modeled on HubSpot contacts / deals / engagements) -------
 // Deal writes are append-only patches + activity lists, so parallel tool calls
@@ -285,20 +358,20 @@ export const addTask = (dealId, title, body, dueAt, source = "ai") =>
 export const addMeeting = (dealId, m, source = "ai") =>
   addActivity(dealId, { kind: "meeting", id: newId("mtg"), at: now(), source, ...m });
 
-export async function createProspect({ firstname, lastname = "", email, amount = 250000, firm = "apex" }) {
+export async function createProspect({ firstname, lastname = "", email, amount = 250000, firm = "apex", product }) {
   const f = FIRMS[firm] || FIRMS.apex;
   const contact = { id: newId("ct"), firstname, lastname, email };
   const deal = {
     id: newId("deal"),
-    name: `${`${firstname} ${lastname}`.trim()} - ${f.product}`,
-    contactId: contact.id, amount, stage: "discovery_scheduled", product: f.product, firm,
-    owner: firm === "optimize" ? "Optimize Senior Portfolio Manager (AI)" : firm === "corpdev" ? "Optimize Corporate Development (AI)" : "Apex Portfolio Manager (AI)",
+    name: `${`${firstname} ${lastname}`.trim()} - ${product || f.product}`,
+    contactId: contact.id, amount, stage: "discovery_scheduled", product: product || f.product, firm,
+    owner: { optimize: "Optimize Senior Portfolio Manager (AI)", corpdev: "Optimize Corporate Development (AI)", invitationhomes: "Invitation Homes Training Simulator (AI)" }[firm] || "Apex Portfolio Manager (AI)",
     createdAt: now(), updatedAt: now(), props: {},
   };
   await setJSON(K.contact(contact.id), contact);
   await setJSON(K.deal(deal.id), deal);
   await setJSON(K.dealIndex, [deal.id, ...((await getJSON(K.dealIndex)) ?? [])]);
-  await addNote(deal.id, "Deal created", "Inbound lead booked a Discovery & Financial Goal Mapping call.", [], "system");
+  await addNote(deal.id, firm === "invitationhomes" ? "Training session started" : "Deal created", firm === "invitationhomes" ? `Roleplay: ${product}` : "Inbound lead booked a Discovery & Financial Goal Mapping call.", [], "system");
   return { contact, deal };
 }
 
@@ -506,6 +579,7 @@ export const GUIDE = {
   record_client_profile: "Saved. Continue with the next part of the meeting script.",
   record_advisor_profile: "Saved. Continue with the next discovery question.",
   complete_discovery_call: "Done. Close warmly: confirm you'll see them at the booked time.",
+  record_training_scorecard: "Scorecard saved to the trainee's record. Now give the spoken debrief as their training coach: overall score first, two strengths in their own words, two improvements each with a better line, then ask if they want to run it again.",
   request_advisor_handoff: "Handoff created. Tell them a licensed advisor will follow up with them directly, then ask if there's anything else you can help with today.",
 };
 
@@ -616,6 +690,18 @@ export async function runTool(name, args, s, toolCallId) {
       await addNote(s.dealId, "Advisor handoff requested", reason, ["handoff"]);
       await feed({ type: "tool", title: "Advisor handoff requested", detail: reason, conversationId: s.conversationId });
       return GUIDE.request_advisor_handoff;
+    }
+
+    case "record_training_scorecard": {
+      const props = Object.fromEntries(Object.entries(args).filter(([k]) => TRAINING_FIELDS[k]).map(([k, v]) => [k, str(v)]));
+      props.scenario = IH_SCENARIOS[s.scenario]?.label || props.scenario || "";
+      await updateProps(s.dealId, props);
+      await moveStage(s.dealId, "discovery_completed");
+      await addNote(s.dealId, `Scorecard: ${props.overall_score || "?"}/100`,
+        [props.outcome, props.criteria_scores && `\n${props.criteria_scores}`, props.strengths && `\nStrengths: ${props.strengths}`, props.improvements && `\nImprove: ${props.improvements}`, props.safety_flag && `\nSAFETY FLAG: ${props.safety_flag}`].filter(Boolean).join("\n"),
+        ["training", "ai-call"]);
+      await feed({ type: props.safety_flag ? "error" : "tool", title: `Scorecard saved: ${props.overall_score || "?"}/100`, detail: [props.criteria_scores, props.safety_flag && `Safety flag: ${props.safety_flag}`].filter(Boolean).join("\n"), conversationId: s.conversationId });
+      return GUIDE.record_training_scorecard;
     }
 
     default:

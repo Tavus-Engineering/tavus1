@@ -75,17 +75,21 @@ async function state(req, res) {
       firms: Object.fromEntries(Object.entries(A.FIRMS).map(([k, f]) => [k, { label: f.label, palId: f.palId }])),
       profileFields: A.PROFILE_FIELDS,
       advisorFields: A.ADVISOR_FIELDS,
+      trainingFields: A.TRAINING_FIELDS,
+      scenarios: Object.fromEntries(Object.entries(A.IH_SCENARIOS).map(([id, s]) => [id, { label: s.label, track: s.track, brief: s.brief, criteria: s.criteria }])),
     },
   });
 }
 
 /* Creates the CRM prospect + Tavus conversation. Shared by the signed-in console
    (start) and the public share link (public_start). */
-async function launch(req, { firmKey, mode, meetingUrl, firstname, lastname, email, isPublic }) {
+async function launch(req, { firmKey, mode, meetingUrl, firstname, lastname, email, isPublic, scenario }) {
   const inZoom = mode === "zoom";
   const firm = A.FIRMS[firmKey];
+  const isIH = firmKey === "invitationhomes";
+  const sc = isIH ? (A.IH_SCENARIOS[scenario] ? scenario : "hvac") : null;
   await A.ensureSeeded();
-  const { contact, deal } = await A.createProspect({ firstname, lastname, email, firm: firmKey });
+  const { contact, deal } = await A.createProspect({ firstname, lastname, email, firm: firmKey, ...(isIH ? { amount: 0, product: A.IH_SCENARIOS[sc].label } : {}) });
   const name = `${firstname} ${lastname}`.trim();
   try {
     if (inZoom) await A.ensureConferencing(firm.palId);
@@ -96,26 +100,26 @@ async function launch(req, { firmKey, mode, meetingUrl, firstname, lastname, ema
       ...(inZoom ? { meeting_url: meetingUrl } : {}),
       conversation_name: `${firm.label} - ${name}${isPublic ? " (share link)" : ""}`,
       callback_url: `${origin(req)}/api/apex?op=webhook`,
-      custom_greeting: firm.greeting(firstname),
-      conversational_context:
+      custom_greeting: firm.greeting(firstname, sc),
+      conversational_context: isIH ? A.ihContext(sc, name) :
         `Today is ${A.todayLabel()}; the meeting started at ${A.nowTimeLabel()} Eastern Time. The prospect on this call is ${name}, email ${email}. ` +
         `A deal already exists in the CRM for them at stage "Discovery Call Scheduled". Your greeting already played; don't re-introduce yourself.` +
         (firmKey === "optimize" || firmKey === "corpdev"
           ? " During the brochure, present one page per turn and pause only at the six planned questions; each question is the last thing you say in that turn."
           : "") +
         (firmKey === "corpdev" ? ` The advisor's email (${email}) is on file, so the booking goes there.` : ""),
-      properties: { max_call_duration: firmKey === "apex" ? 2700 : 3600, participant_left_timeout: 60 },
+      properties: { max_call_duration: isIH ? 1500 : firmKey === "apex" ? 2700 : 3600, participant_left_timeout: 60 },
     });
     await A.saveSession({
       conversationId: convo.conversation_id, conversationUrl: convo.conversation_url, mode: inZoom ? "zoom" : "room",
       meetingUrl: inZoom ? meetingUrl : null, dealId: deal.id, contactId: contact.id, public: !!isPublic,
-      prospectName: name, prospectEmail: email, firm: firmKey, startedAt: new Date().toISOString(), status: "starting",
+      prospectName: name, prospectEmail: email, firm: firmKey, scenario: sc, startedAt: new Date().toISOString(), status: "starting",
     });
     // Share-link calls run in parallel and never occupy the console's single "active" slot.
     if (!isPublic) await A.setActiveId(convo.conversation_id);
     await A.feed({
       type: "system",
-      title: isPublic ? `${name} started a ${firm.label} call from the share link` : inZoom ? `${firm.label} avatar is joining the meeting` : `${firm.label} room is ready`,
+      title: isIH ? `${name} started training: ${A.IH_SCENARIOS[sc].label}${isPublic ? " (share link)" : ""}` : isPublic ? `${name} started a ${firm.label} call from the share link` : inZoom ? `${firm.label} avatar is joining the meeting` : `${firm.label} room is ready`,
       detail: inZoom ? meetingUrl : isPublic ? email : "Standalone call opened in the browser",
       conversationId: convo.conversation_id,
     });
@@ -128,7 +132,7 @@ async function launch(req, { firmKey, mode, meetingUrl, firstname, lastname, ema
 
 async function start(req, res) {
   if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
-  const { meetingUrl, firstname, lastname = "", email, firm: firmKey = "apex", mode = "room" } = req.body || {};
+  const { meetingUrl, firstname, lastname = "", email, firm: firmKey = "apex", mode = "room", scenario } = req.body || {};
   const firm = A.FIRMS[firmKey];
   if (!firm) { res.status(400).json({ error: `Unknown firm "${firmKey}"` }); return; }
   if (!firm.palId) { res.status(500).json({ error: `No avatar configured for ${firm.label}` }); return; }
@@ -136,7 +140,7 @@ async function start(req, res) {
   if (!firstname || !email) { res.status(400).json({ error: "Prospect first name and email are required" }); return; }
   if (await A.getActiveId()) { res.status(409).json({ error: "A call is already live. End it first." }); return; }
   try {
-    res.status(200).json(await launch(req, { firmKey, mode, meetingUrl, firstname, lastname, email, isPublic: false }));
+    res.status(200).json(await launch(req, { firmKey, mode, meetingUrl, firstname, lastname, email, isPublic: false, scenario }));
   } catch (e) {
     res.status(502).json({ error: e.message });
   }
@@ -153,6 +157,13 @@ async function publicInfo(req, res) {
   const firm = A.FIRMS[String(req.query?.firm || "")];
   if (!firm || !firm.palId) { res.status(404).json({ error: "This link isn't active." }); return; }
   const k = String(req.query.firm);
+  if (k === "invitationhomes") {
+    res.status(200).json({
+      label: "Invitation Homes", minutes: "5-10", headline: "Training Simulator", audience: "trainee",
+      scenarios: Object.entries(A.IH_SCENARIOS).map(([id, s]) => ({ id, label: s.label, track: s.track, brief: s.brief, criteria: s.criteria })),
+    });
+    return;
+  }
   res.status(200).json({
     label: k === "corpdev" ? "Optimize Wealth Management" : firm.label,
     minutes: k === "apex" ? "20-30" : "35-45",
@@ -163,7 +174,7 @@ async function publicInfo(req, res) {
 
 async function publicStart(req, res) {
   if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
-  const { firm: firmKey, firstname = "", lastname = "", email = "" } = req.body || {};
+  const { firm: firmKey, firstname = "", lastname = "", email = "", scenario } = req.body || {};
   const firm = A.FIRMS[firmKey];
   if (!firm || !firm.palId) { res.status(404).json({ error: "This link isn't active." }); return; }
   const first = String(firstname).trim().slice(0, 60), last = String(lastname).trim().slice(0, 60), mail = String(email).trim().slice(0, 120);
@@ -174,7 +185,7 @@ async function publicStart(req, res) {
   if ((await A.incr(`apex:rl:day:${day}`, 86400)) > Number(process.env.APEX_PUBLIC_DAILY_CAP || 40)) { res.status(429).json({ error: "This demo has reached today's limit. Please try again tomorrow." }); return; }
 
   try {
-    const out = await launch(req, { firmKey, mode: "room", firstname: first, lastname: last, email: mail, isPublic: true });
+    const out = await launch(req, { firmKey, mode: "room", firstname: first, lastname: last, email: mail, isPublic: true, scenario: String(scenario || "") });
     res.status(200).json({ conversationId: out.conversationId, conversationUrl: out.conversationUrl });
   } catch (e) {
     res.status(502).json({ error: "Couldn't start the call. Please try again in a minute." });
@@ -254,7 +265,7 @@ async function webhook(req, res) {
     case "system.pal_joined":
     case "system.replica_joined":
       await A.saveSession({ ...s, status: "live" });
-      await A.feed({ type: "tavus", title: "Apex joined the meeting", conversationId: id });
+      await A.feed({ type: "tavus", title: "Avatar joined the call", conversationId: id });
       break;
     case "system.shutdown":
       await A.saveSession({ ...s, status: "ended" });
