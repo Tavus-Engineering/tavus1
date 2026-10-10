@@ -962,6 +962,7 @@ function AutoAdvance({ conversationId }) {
     let timer = null;
     let userTalking = false;
     let advances = 0;
+    let deckDone = false; // after the last deck pause, pacing cues would only interrupt discovery / the goodbye
 
     const roleOf = (d) => String(d.properties?.role ?? (/\.user\./i.test(d.event_type) ? "user" : "replica")).toLowerCase();
     const presenting = () =>
@@ -998,6 +999,8 @@ function AutoAdvance({ conversationId }) {
             return;
           }
           buf = "";
+          if (/few quick details|rest of your day|speaking with you soon|step out of the roleplay/i.test(said)) deckDone = true;
+          if (deckDone) return;
           // A question anywhere near the end of the turn means "wait for the prospect",
           // even if the avatar tacked a short line on after it.
           if (said.slice(-220).includes("?")) return;
@@ -1014,8 +1017,17 @@ function AutoAdvance({ conversationId }) {
       }
     };
 
+    // When the avatar hangs up (end_call), close our side too instead of leaving an empty room.
+    const onLeft = (e) => {
+      if (e?.participant?.local) return;
+      setTimeout(() => {
+        const others = Object.values(daily.participants() || {}).filter((p) => !p.local);
+        if (!others.length) daily.leave().catch(() => {});
+      }, 2500);
+    };
     daily.on("app-message", onMsg);
-    return () => { clearTimeout(timer); daily.off("app-message", onMsg); };
+    daily.on("participant-left", onLeft);
+    return () => { clearTimeout(timer); daily.off("app-message", onMsg); daily.off("participant-left", onLeft); };
   }, [daily, conversationId]);
   return null;
 }
