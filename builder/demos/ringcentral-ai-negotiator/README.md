@@ -15,7 +15,7 @@ voice and expression.
 
 1. Builder → Demo library → **Import** → `ringcentral-ai-negotiator.scenario.json`.
 2. Setup: paste the API key. The scenario already points at PAL `paf624e2960c`
-   (face "Daniel - Office", `rf4703150052`). The prompt, objectives, guardrails,
+   (Phoenix 4.5 stock face "Dominic", `rcf10ec292c1`). The prompt, objectives, guardrails,
    emotion control, perception and Magic Canvas are already attached in the account.
 3. Launch. To hand it to Tom as a link, use **Share** and send `/d/<slug>`.
 
