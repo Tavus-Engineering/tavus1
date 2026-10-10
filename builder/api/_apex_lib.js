@@ -460,7 +460,8 @@ export function signatureOk(raw, received) {
 
 const GOOGLE_TOKEN_KEY = "apex:google:refresh_token";
 export const googleConfigured = () => !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
-export const googleRedirect = (origin) => `${origin}/api/apex?op=google_callback`;
+// Clean path (vercel.json rewrites it to ?op=google_callback): Google redirect URIs must match exactly.
+export const googleRedirect = (origin) => `${origin}/google/callback`;
 
 export function googleAuthUrl(origin, state) {
   return "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams({

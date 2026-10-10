@@ -2,6 +2,10 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
+      "source": "/google/callback",
+      "destination": "/api/apex?op=google_callback"
+    },
+    {
       "source": "/meet/:firm",
       "destination": "/apex/index.html"
     },
