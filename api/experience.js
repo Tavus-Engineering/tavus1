@@ -1,5 +1,6 @@
 import { isAuthed } from "./_auth.js";
 import { kvAvailable, kvGet, kvSetEx, kvIncr, kvMget } from "./_kv.js";
+import { loadDemo } from "./_builtin-demos.js";
 
 /* Visitor experience data — who attended a call and what they thought of it.
 
@@ -68,7 +69,7 @@ export default async function handler(req, res) {
   const slugStr = String(slug ?? "");
   if (slugStr) {
     if (!/^[A-Za-z0-9_-]{6,24}$/.test(slugStr)) { res.status(400).json({ error: "Bad demo link." }); return; }
-    try { demo = await kvGet(`demo:${slugStr}`); } catch { /* treated as unknown below */ }
+    try { demo = await loadDemo(slugStr, kvAvailable, kvGet); } catch { /* treated as unknown below */ }
     if (!demo) { res.status(404).json({ error: "Unknown demo link." }); return; }
   } else if (!isAuthed(req)) {
     res.status(401).json({ error: "Not signed in." });
