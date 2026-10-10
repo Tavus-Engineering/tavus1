@@ -745,3 +745,35 @@ export async function gradeTranscript(scenarioKey, traineeName, lines) {
   const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
   return JSON.parse(json);
 }
+
+
+// ---- Corp Dev: post-call capture -------------------------------------------------
+// Mid-call CRM tools added a server round trip before every reply (the "weird delay
+// between DAR questions"). The avatar now just talks; the Dealer Analysis Report
+// inputs, objections and summary are extracted from the transcript after the call.
+
+export async function captureAdvisorCall(s, transcript) {
+  const lines = transcript.filter((m) => m.role === "user" || m.role === "assistant").map((m) => `${m.role === "user" ? "ADVISOR" : "VICTOR"}: ${String(m.content || "").trim()}`).filter((l) => l.length > 9);
+  if (!lines.some((l) => l.startsWith("ADVISOR"))) return;
+  const { default: Anthropic } = await import("@anthropic-ai/sdk");
+  const client = new Anthropic();
+  const fields = Object.entries(ADVISOR_FIELDS).map(([k, l]) => `"${k}": ${l}`).join("\n");
+  const system =
+    "You extract CRM data from an advisor-recruiting call transcript. Use only what the ADVISOR actually said; leave a field as an empty string if it never came up. Keep values short, in the advisor's terms (e.g. \"$80M\", \"about 1%\", \"6x\"). " +
+    'Reply with ONLY JSON: {"fields": {<field>: string}, "objections": [{"category": one of fees|compensation|proprietary_products|transfers_in_kind|book_ownership|licensing|transition_effort|regulatory|firm_stability|other, "detail": one sentence}], "summary": "3-5 sentences: book, motivation for looking, key concerns, next step booked"}';
+  const user = `FIELDS:\n${fields}\n\nTRANSCRIPT:\n${lines.join("\n").slice(-40000)}`;
+  let msg;
+  for (const model of ["claude-opus-4-8", "claude-haiku-4-5-20251001"]) {
+    try { msg = await client.messages.create({ model, max_tokens: 2000, system, messages: [{ role: "user", content: user }] }); break; }
+    catch (e) { if (model.startsWith("claude-haiku")) throw e; }
+  }
+  const text = msg.content.map((b) => b.text || "").join("");
+  const out = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
+  const props = Object.fromEntries(Object.entries(out.fields || {}).filter(([k, v]) => ADVISOR_FIELDS[k] && str(v)).map(([k, v]) => [k, str(v)]));
+  if (out.summary) props.discovery_summary = str(out.summary);
+  await updateProps(s.dealId, props);
+  for (const o of out.objections || []) if (o?.detail) await logObjection(s.dealId, str(o.category) || "other", str(o.detail));
+  await moveStage(s.dealId, "discovery_completed");
+  await addNote(s.dealId, "Intro Call Summary", str(out.summary), ["discovery", "ai-call"]);
+  await feed({ type: "tool", title: `Dealer Analysis inputs captured (${Object.keys(props).length - (out.summary ? 1 : 0)} fields)`, detail: Object.entries(props).filter(([k]) => ADVISOR_FIELDS[k]).map(([k, v]) => `${ADVISOR_FIELDS[k]}: ${v}`).join("\n"), conversationId: s.conversationId });
+}

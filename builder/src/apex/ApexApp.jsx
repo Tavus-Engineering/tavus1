@@ -950,8 +950,8 @@ function ScorecardPanel({ p }) {
 // on a statement and the prospect hasn't started talking within ~1.5s, cue the
 // next page. If the turn ended on a question, wait for the prospect.
 
-const ADVANCE_DELAY_MS = 1500;
-const UNKNOWN_TURN_DELAY_MS = 4000;
+const ADVANCE_DELAY_MS = 700;
+const UNKNOWN_TURN_DELAY_MS = 2000;
 const MAX_UNANSWERED_ADVANCES = 14; // runaway guard; resets when the prospect speaks
 
 function AutoAdvance({ conversationId }) {

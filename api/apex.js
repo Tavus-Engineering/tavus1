@@ -296,6 +296,10 @@ async function webhook(req, res) {
     case "application.transcription_ready": {
       const t = data.properties?.transcript ?? [];
       await A.feed({ type: "tavus", title: "Transcript ready", detail: `${t.filter((m) => m.role !== "system").length} turns`, conversationId: id });
+      if (s.firm === "corpdev") {
+        try { await A.captureAdvisorCall(s, t); }
+        catch (e) { await A.feed({ type: "error", title: "Post-call capture failed", detail: e.message, conversationId: id }); }
+      }
       // Training call that ended without a scorecard: grade it now from Tavus's transcript.
       if (s.firm === "invitationhomes" && !(await A.getDeal(s.dealId))?.props?.overall_score) {
         try {
