@@ -296,12 +296,14 @@ async function webhook(req, res) {
     case "application.transcription_ready": {
       const t = data.properties?.transcript ?? [];
       await A.feed({ type: "tavus", title: "Transcript ready", detail: `${t.filter((m) => m.role !== "system").length} turns`, conversationId: id });
-      if (s.firm === "corpdev") {
+      // Tavus may retry a slow webhook; run post-call capture/grading once per conversation.
+      const firstDelivery = await A.setOnce(`apex:postcall:${id}`);
+      if (s.firm === "corpdev" && firstDelivery) {
         try { await A.captureAdvisorCall(s, t); }
         catch (e) { await A.feed({ type: "error", title: "Post-call capture failed", detail: e.message, conversationId: id }); }
       }
       // Training call that ended without a scorecard: grade it now from Tavus's transcript.
-      if (s.firm === "invitationhomes" && !(await A.getDeal(s.dealId))?.props?.overall_score) {
+      if (s.firm === "invitationhomes" && firstDelivery && !(await A.getDeal(s.dealId))?.props?.overall_score) {
         try {
           const lines = t.filter((m) => m.role === "user" || m.role === "assistant").map((m) => ({ role: m.role === "user" ? "user" : "replica", text: String(m.content || "") }));
           await A.saveScorecard(s, await A.gradeTranscript(s.scenario, s.prospectName, lines), "grader");

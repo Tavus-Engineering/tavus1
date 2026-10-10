@@ -116,8 +116,13 @@ export function zonedToUtc(y, m, d, h, min, tz) {
   return new Date(guess);
 }
 
+const NUM_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
 export function parseTime(t) {
-  const m = String(t).trim().toLowerCase().replace(/\s+/g, "").replace(/\./g, "").match(/^(\d{1,2})(?::?(\d{2}))?(am|pm)?$/);
+  // Tolerate how a model might phrase it: "eleven AM", "11 o'clock", "noon", "11:00 a.m. ET".
+  let x = String(t).trim().toLowerCase().replace(/\b(et|est|edt|eastern|pt|pst|pdt|ct|cst|cdt|mt|mst|mdt)\b/g, "").replace(/o'?clock/g, "");
+  if (/\bnoon\b/.test(x)) x = "12pm";
+  x = x.replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/g, (w) => String(NUM_WORDS[w]));
+  const m = x.replace(/\s+/g, "").replace(/\./g, "").match(/^(\d{1,2})(?::?(\d{2}))?(am|pm)?$/);
   if (!m) return null;
   let hour = +m[1];
   const minute = m[2] ? +m[2] : 0;
@@ -135,7 +140,8 @@ export function resolveSlot({ date, weekday, time, tz = DEFAULT_TZ, now = new Da
   if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
     [y, m, d] = date.split("-").map(Number);
   } else if (weekday) {
-    const want = WEEKDAYS.indexOf(String(weekday).trim().toLowerCase().replace(/^(next|this)\s+/, ""));
+    const w = String(weekday).trim().toLowerCase().replace(/^(next|this)\s+/, "");
+    const want = w.length >= 3 ? WEEKDAYS.findIndex((d) => d.startsWith(w.slice(0, 3))) : -1;
     if (want < 0) throw new Error(`Could not understand weekday "${weekday}"`);
     const today = zonedParts(now, tz);
     let delta = (want - today.weekday + 7) % 7;
@@ -178,6 +184,7 @@ export const FIRMS = {
       "Past performance (8-10% historical returns) does not guarantee future results.",
     minutes: 45,
     taskTitle: "Follow-up: Portfolio Design & Risk Assessment Presentation",
+    defaultWeekday: "tuesday",
     taskBody: (name) => `Present a proposed allocation for ${name} based on discovery answers. Address logged objections (fees, guarantees, recession risk).`,
   },
   optimize: {
@@ -210,6 +217,7 @@ export const FIRMS = {
       "Performance figures discussed are historical and not a guarantee of future results.",
     minutes: 45,
     taskTitle: "Follow-up: Dealer Analysis Report review (meeting 2 of 4)",
+    defaultWeekday: "tuesday",
     taskBody: (name) => `Prepare ${name}'s Dealer Analysis Report from the intro-meeting profile and send investment info, firm overview and sample statements beforehand. Send the advisor testimonial video links.`,
   },
   invitationhomes: {
@@ -634,7 +642,9 @@ export async function runTool(name, args, s, toolCallId) {
     case "book_next_meeting": {
       const firm = firmOf(s);
       const tz = str(args.timezone) || DEFAULT_TZ;
-      const slot = resolveSlot({ date: str(args.date), weekday: str(args.weekday), time: str(args.time) || "15:00", tz });
+      // If the model sends a time but no day, the script's proposed day is the one they agreed to.
+      const weekday = str(args.weekday) || (str(args.date) ? "" : firm.defaultWeekday || "");
+      const slot = resolveSlot({ date: str(args.date), weekday, time: str(args.time) || "15:00", tz });
       const end = new Date(slot.start.getTime() + firm.minutes * 60_000);
       const attendee = s.prospectEmail;
       const title = firm.meetingTitle;
