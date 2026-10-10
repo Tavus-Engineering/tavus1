@@ -116,8 +116,13 @@ export function zonedToUtc(y, m, d, h, min, tz) {
   return new Date(guess);
 }
 
+const NUM_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12 };
 export function parseTime(t) {
-  const m = String(t).trim().toLowerCase().replace(/\s+/g, "").replace(/\./g, "").match(/^(\d{1,2})(?::?(\d{2}))?(am|pm)?$/);
+  // Tolerate how a model might phrase it: "eleven AM", "11 o'clock", "noon", "11:00 a.m. ET".
+  let x = String(t).trim().toLowerCase().replace(/\b(et|est|edt|eastern|pt|pst|pdt|ct|cst|cdt|mt|mst|mdt)\b/g, "").replace(/o'?clock/g, "");
+  if (/\bnoon\b/.test(x)) x = "12pm";
+  x = x.replace(/\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/g, (w) => String(NUM_WORDS[w]));
+  const m = x.replace(/\s+/g, "").replace(/\./g, "").match(/^(\d{1,2})(?::?(\d{2}))?(am|pm)?$/);
   if (!m) return null;
   let hour = +m[1];
   const minute = m[2] ? +m[2] : 0;
@@ -135,7 +140,8 @@ export function resolveSlot({ date, weekday, time, tz = DEFAULT_TZ, now = new Da
   if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
     [y, m, d] = date.split("-").map(Number);
   } else if (weekday) {
-    const want = WEEKDAYS.indexOf(String(weekday).trim().toLowerCase().replace(/^(next|this)\s+/, ""));
+    const w = String(weekday).trim().toLowerCase().replace(/^(next|this)\s+/, "");
+    const want = w.length >= 3 ? WEEKDAYS.findIndex((d) => d.startsWith(w.slice(0, 3))) : -1;
     if (want < 0) throw new Error(`Could not understand weekday "${weekday}"`);
     const today = zonedParts(now, tz);
     let delta = (want - today.weekday + 7) % 7;
@@ -178,6 +184,7 @@ export const FIRMS = {
       "Past performance (8-10% historical returns) does not guarantee future results.",
     minutes: 45,
     taskTitle: "Follow-up: Portfolio Design & Risk Assessment Presentation",
+    defaultWeekday: "tuesday",
     taskBody: (name) => `Present a proposed allocation for ${name} based on discovery answers. Address logged objections (fees, guarantees, recession risk).`,
   },
   optimize: {
@@ -210,6 +217,7 @@ export const FIRMS = {
       "Performance figures discussed are historical and not a guarantee of future results.",
     minutes: 45,
     taskTitle: "Follow-up: Dealer Analysis Report review (meeting 2 of 4)",
+    defaultWeekday: "tuesday",
     taskBody: (name) => `Prepare ${name}'s Dealer Analysis Report from the intro-meeting profile and send investment info, firm overview and sample statements beforehand. Send the advisor testimonial video links.`,
   },
   invitationhomes: {
@@ -460,7 +468,8 @@ export function signatureOk(raw, received) {
 
 const GOOGLE_TOKEN_KEY = "apex:google:refresh_token";
 export const googleConfigured = () => !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
-export const googleRedirect = (origin) => `${origin}/api/apex?op=google_callback`;
+// Clean path (vercel.json rewrites it to ?op=google_callback): Google redirect URIs must match exactly.
+export const googleRedirect = (origin) => `${origin}/google/callback`;
 
 export function googleAuthUrl(origin, state) {
   return "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams({
@@ -633,7 +642,9 @@ export async function runTool(name, args, s, toolCallId) {
     case "book_next_meeting": {
       const firm = firmOf(s);
       const tz = str(args.timezone) || DEFAULT_TZ;
-      const slot = resolveSlot({ date: str(args.date), weekday: str(args.weekday), time: str(args.time) || "15:00", tz });
+      // If the model sends a time but no day, the script's proposed day is the one they agreed to.
+      const weekday = str(args.weekday) || (str(args.date) ? "" : firm.defaultWeekday || "");
+      const slot = resolveSlot({ date: str(args.date), weekday, time: str(args.time) || "15:00", tz });
       const end = new Date(slot.start.getTime() + firm.minutes * 60_000);
       const attendee = s.prospectEmail;
       const title = firm.meetingTitle;
@@ -744,4 +755,36 @@ export async function gradeTranscript(scenarioKey, traineeName, lines) {
   const text = msg.content.map((b) => b.text || "").join("");
   const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
   return JSON.parse(json);
+}
+
+
+// ---- Corp Dev: post-call capture -------------------------------------------------
+// Mid-call CRM tools added a server round trip before every reply (the "weird delay
+// between DAR questions"). The avatar now just talks; the Dealer Analysis Report
+// inputs, objections and summary are extracted from the transcript after the call.
+
+export async function captureAdvisorCall(s, transcript) {
+  const lines = transcript.filter((m) => m.role === "user" || m.role === "assistant").map((m) => `${m.role === "user" ? "ADVISOR" : "VICTOR"}: ${String(m.content || "").trim()}`).filter((l) => l.length > 9);
+  if (!lines.some((l) => l.startsWith("ADVISOR"))) return;
+  const { default: Anthropic } = await import("@anthropic-ai/sdk");
+  const client = new Anthropic();
+  const fields = Object.entries(ADVISOR_FIELDS).map(([k, l]) => `"${k}": ${l}`).join("\n");
+  const system =
+    "You extract CRM data from an advisor-recruiting call transcript. Use only what the ADVISOR actually said; leave a field as an empty string if it never came up. Keep values short, in the advisor's terms (e.g. \"$80M\", \"about 1%\", \"6x\"). " +
+    'Reply with ONLY JSON: {"fields": {<field>: string}, "objections": [{"category": one of fees|compensation|proprietary_products|transfers_in_kind|book_ownership|licensing|transition_effort|regulatory|firm_stability|other, "detail": one sentence}], "summary": "3-5 sentences: book, motivation for looking, key concerns, next step booked"}';
+  const user = `FIELDS:\n${fields}\n\nTRANSCRIPT:\n${lines.join("\n").slice(-40000)}`;
+  let msg;
+  for (const model of ["claude-opus-4-8", "claude-haiku-4-5-20251001"]) {
+    try { msg = await client.messages.create({ model, max_tokens: 2000, system, messages: [{ role: "user", content: user }] }); break; }
+    catch (e) { if (model.startsWith("claude-haiku")) throw e; }
+  }
+  const text = msg.content.map((b) => b.text || "").join("");
+  const out = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
+  const props = Object.fromEntries(Object.entries(out.fields || {}).filter(([k, v]) => ADVISOR_FIELDS[k] && str(v)).map(([k, v]) => [k, str(v)]));
+  if (out.summary) props.discovery_summary = str(out.summary);
+  await updateProps(s.dealId, props);
+  for (const o of out.objections || []) if (o?.detail) await logObjection(s.dealId, str(o.category) || "other", str(o.detail));
+  await moveStage(s.dealId, "discovery_completed");
+  await addNote(s.dealId, "Intro Call Summary", str(out.summary), ["discovery", "ai-call"]);
+  await feed({ type: "tool", title: `Dealer Analysis inputs captured (${Object.keys(props).length - (out.summary ? 1 : 0)} fields)`, detail: Object.entries(props).filter(([k]) => ADVISOR_FIELDS[k]).map(([k, v]) => `${ADVISOR_FIELDS[k]}: ${v}`).join("\n"), conversationId: s.conversationId });
 }

@@ -6,6 +6,10 @@
   "outputDirectory": "builder/dist",
   "rewrites": [
     {
+      "source": "/google/callback",
+      "destination": "/api/apex?op=google_callback"
+    },
+    {
       "source": "/meet/:firm",
       "destination": "/apex/index.html"
     },
