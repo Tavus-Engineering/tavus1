@@ -2,8 +2,8 @@
   "name": "RingCentral / AI Negotiator (Auto)",
   "config": {
     "v": 1,
-    "faceId": "",
-    "palId": "",
+    "faceId": "rf4703150052",
+    "palId": "paf624e2960c",
     "languages": [
       "en"
     ],

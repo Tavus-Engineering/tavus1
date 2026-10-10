@@ -14,11 +14,10 @@ voice and expression.
 ## Load it
 
 1. Builder → Demo library → **Import** → `ringcentral-ai-negotiator.scenario.json`.
-2. Setup: paste the API key and pick a **Face** (warm, mid-30s, and expressive
-   on camera reads best). Click **Create PAL**, which uses the attached prompt.
-   Or reuse a PAL; the launch hygiene sweep clears anything stale.
-3. Persona step: review the draft, then **Attach**.
-4. Launch. To hand it to Tom as a link, use **Share** and send `/d/<slug>`.
+2. Setup: paste the API key. The scenario already points at PAL `paf624e2960c`
+   (face "Daniel - Office", `rf4703150052`). The prompt, objectives, guardrails,
+   emotion control, perception and Magic Canvas are already attached in the account.
+3. Launch. To hand it to Tom as a link, use **Share** and send `/d/<slug>`.
 
 ## Drive it (≈3 min, hits every emotion)
 
