@@ -1,4 +1,5 @@
 import { kvAvailable, kvGet, kvIncr, kvLpush, kvLtrim, kvSetRaw } from "./_kv.js";
+import { BUILTIN_DEMOS, loadDemo } from "./_builtin-demos.js";
 
 /* Public endpoint: a visitor on /d/{slug} presses Start. We create a fresh
    Tavus conversation server-side with the team's TAVUS_API_KEY — visitors
@@ -60,24 +61,28 @@ export default async function handler(req, res) {
 
   const slug = String(req.body?.slug ?? "");
   if (!/^[A-Za-z0-9_-]{6,24}$/.test(slug)) { res.status(400).json({ error: "Bad demo link." }); return; }
-  if (!kvAvailable()) { res.status(500).json({ error: "Demo-link storage isn't set up on the server." }); return; }
+  // Built-in demos ship with the code; only stored links need Redis.
+  const builtin = !!BUILTIN_DEMOS[slug];
+  if (!builtin && !kvAvailable()) { res.status(500).json({ error: "Demo-link storage isn't set up on the server." }); return; }
   if (!process.env.TAVUS_API_KEY) {
     res.status(500).json({ error: "TAVUS_API_KEY is not set on the server — shared demo links need it to start conversations. Add it in the Vercel project's environment variables." });
     return;
   }
 
   try {
-    const demo = await kvGet(`demo:${slug}`);
+    const demo = await loadDemo(slug, kvAvailable, kvGet);
     if (!demo?.payload) { res.status(404).json({ error: "This demo link doesn't exist." }); return; }
 
+    // Rate limit needs Redis; a built-in demo on a storage-less deploy runs
+    // uncapped by this counter (max_call_duration still bounds each call).
     const hourBucket = Math.floor(Date.now() / 3_600_000);
-    const launches = await kvIncr(`rl:${slug}:${hourBucket}`, 3700);
+    const launches = kvAvailable() ? await kvIncr(`rl:${slug}:${hourBucket}`, 3700) : 0;
     if (launches > LAUNCHES_PER_HOUR) {
       res.status(429).json({ error: "This demo is getting a lot of traffic — try again in a little while." });
       return;
     }
 
-    const payload = applyJourneyPrefs(demo.payload, demo.experience?.journey, req.body?.prefs);
+    const payload = applyJourneyPrefs(structuredClone(demo.payload), demo.experience?.journey, req.body?.prefs);
 
     // Tavus Memories: derive the store key server-side. "visitor" mode keys
     // the memory to the gate email (scoped to this demo, so different demos
@@ -134,7 +139,7 @@ export default async function handler(req, res) {
       return;
     }
     // Per-demo stats (best-effort — never blocks the launch).
-    try {
+    if (kvAvailable()) try {
       const now = new Date();
       await kvIncr(`stats:${slug}:launches`);
       await kvIncr(`stats:${slug}:d:${now.toISOString().slice(0, 10)}`, 90 * 86400);

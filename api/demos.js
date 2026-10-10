@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { isAuthed, sessionEmail } from "./_auth.js";
 import { kvAvailable, kvGet, kvSet, kvLpush, kvLtrim } from "./_kv.js";
+import { BUILTIN_DEMOS, loadDemo } from "./_builtin-demos.js";
 
 /* Shareable demo links.
    POST (builder session required): store an immutable snapshot of a demo
@@ -18,9 +19,9 @@ export default async function handler(req, res) {
       res.status(400).json({ error: "Bad demo link." });
       return;
     }
-    if (!kvAvailable()) { res.status(500).json({ error: NO_KV_MSG }); return; }
+    if (!BUILTIN_DEMOS[slug] && !kvAvailable()) { res.status(500).json({ error: NO_KV_MSG }); return; }
     try {
-      const demo = await kvGet(`demo:${slug}`);
+      const demo = await loadDemo(slug, kvAvailable, kvGet);
       if (!demo) { res.status(404).json({ error: "This demo link doesn't exist (or was created before storage was set up)." }); return; }
       const { payload, presentation, browserUse, ...pub } = demo; // visitors don't need the raw Tavus payload or the skill configs
       if (pub.experience && typeof pub.experience === "object") {

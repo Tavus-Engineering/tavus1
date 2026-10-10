@@ -11,6 +11,13 @@ The pitch is that RingCentral already has the negotiation logic. Tavus gives it
 a face, reads the shopper's emotions on camera, and performs feelings back in
 voice and expression.
 
+## Live page
+
+**https://tavus1.vercel.app/d/rc-negotiator** goes live once this branch is merged and
+deployed. It's built in (`api/_builtin-demos.js`), so it needs no builder login and no
+Redis, and each visitor call uses the Vercel `TAVUS_API_KEY`. To change the page, edit the
+scenario, re-import it, capture the Share payload, and replace the snapshot.
+
 ## Load it
 
 1. Builder → Demo library → **Import** → `ringcentral-ai-negotiator.scenario.json`.
