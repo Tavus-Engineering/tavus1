@@ -19,7 +19,7 @@ Tools on the PAL (registry, API delivery → `/api/apex?op=tool`, HMAC):
 
 Env vars (Vercel): `TAVUS_API_KEY` + Redis (already used by the builder).
 For calendar invites: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (OAuth "Web" client,
-redirect URI `https://tavus1.vercel.app/api/apex?op=google_callback`, Calendar API on),
+redirect URI `https://tavus1.vercel.app/google/callback`, Calendar API on),
 then click Connect on the console. Optional: `APEX_TOOL_SECRET` to enforce tool-call
 signatures, `APEX_PAL_ID` / `APEX_FACE_ID` overrides.
 
