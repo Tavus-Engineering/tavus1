@@ -166,9 +166,10 @@ async function publicInfo(req, res) {
     return;
   }
   res.status(200).json({
-    label: k === "corpdev" ? "Optimize Wealth Management" : firm.label,
+    label: k === "corpdev" || k === "optimize" ? "Optimize Financial Group" : firm.label,
     minutes: k === "apex" ? "20-30" : "35-45",
-    headline: k === "corpdev" ? "Explore the Optimize Advisor Platform" : "Meet your portfolio manager",
+    headline: k === "corpdev" ? "Explore the Advisor Platform" : k === "optimize" ? "A conversation about your wealth" : "Meet your portfolio manager",
+    brand: k === "corpdev" || k === "optimize" ? "ofg" : null,
     audience: k === "corpdev" ? "advisor" : "client",
   });
 }
@@ -298,9 +299,12 @@ async function webhook(req, res) {
       await A.feed({ type: "tavus", title: "Transcript ready", detail: `${t.filter((m) => m.role !== "system").length} turns`, conversationId: id });
       // Tavus may retry a slow webhook; run post-call capture/grading once per conversation.
       const firstDelivery = await A.setOnce(`apex:postcall:${id}`);
-      if (s.firm === "corpdev" && firstDelivery) {
-        try { await A.captureAdvisorCall(s, t); }
-        catch (e) { await A.feed({ type: "error", title: "Post-call capture failed", detail: e.message, conversationId: id }); }
+      if (firstDelivery && (s.firm === "corpdev" || s.firm === "optimize" || s.firm === "apex")) {
+        try {
+          if (s.firm === "corpdev") await A.captureAdvisorCall(s, t);
+          else if (s.firm === "optimize") await A.captureOptimizeCall(s, t);
+          else await A.captureApexCall(s, t);
+        } catch (e) { await A.feed({ type: "error", title: "Post-call capture failed", detail: e.message, conversationId: id }); }
       }
       // Training call that ended without a scorecard: grade it now from Tavus's transcript.
       if (s.firm === "invitationhomes" && firstDelivery && !(await A.getDeal(s.dealId))?.props?.overall_score) {

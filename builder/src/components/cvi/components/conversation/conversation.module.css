@@ -16,7 +16,7 @@
 	overflow: hidden;
 	border-radius: 0.5rem;
 	max-height: 90vh;
-	background: linear-gradient(135deg, #4b5563 0%, #1f2937 100%);
+	background: linear-gradient(135deg, var(--cvi-bg-a, #4b5563) 0%, var(--cvi-bg-b, #1f2937) 100%);
 	background-size: 400% 400%;
 	/* No animation: an infinitely animating background-position repaints a
 	   stage-sized layer every frame for the whole call — the sustained paint

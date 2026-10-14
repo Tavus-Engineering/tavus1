@@ -13,9 +13,11 @@ all through its own tool calls. Lives alongside the Experience Builder; touches 
 - Access: same builder sign-in. Tavus tool calls (`?op=tool`) only write for
   conversations this console started.
 
-Tools on the PAL (registry, API delivery → `/api/apex?op=tool`, HMAC):
-`log_objection`, `record_discovery_answers`, `book_next_meeting`,
-`complete_discovery_call`, `request_advisor_handoff`.
+Tools on the PAL during the call (registry, API delivery → `/api/apex?op=tool`, HMAC):
+`book_next_meeting`, `request_advisor_handoff`. Both are passthrough and
+fire-and-forget, so the avatar confirms the slot or the handoff in the same
+turn and does not wait for the server. Discovery answers, objections and the
+call summary are extracted from the transcript after the call.
 
 Env vars (Vercel): `TAVUS_API_KEY` + Redis (already used by the builder).
 For calendar invites: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` (OAuth "Web" client,
@@ -31,9 +33,9 @@ Pick "Optimize" on the console. Second PAL "Optimize Senior Portfolio Manager"
   (`builder/public/apex-assets/optimize-brochure.pdf`, page 11 flattened to strip a
   hidden advisor-compensation text layer). Page-by-page notes: `apex-prompts/optimize_presentation_prompt.md`.
 - System prompt: `apex-prompts/optimize_system_prompt.md` (full initial-meeting script).
-- Tools: `record_client_profile` (per discovery section → deal "Client profile"),
-  `book_plan_review` (Comprehensive Financial Plan review, 60 min), plus the shared
-  `log_objection`, `complete_discovery_call`, `request_advisor_handoff`.
+- Tools during the call: `book_plan_review` (Comprehensive Financial Plan review, 60 min)
+  and `request_advisor_handoff`. Both are passthrough and fire-and-forget. The client
+  profile, objections and summary are extracted from the transcript after the call.
 - Guardrail `g204367c8b27a`: no guarantees, no invented fee %, no advisor comp talk.
 
 ## Standalone + share link
@@ -51,6 +53,7 @@ Console option "Optimize Corp Dev" and share link `/meet/corpdev`. PAL `pe1cff40
 ("Optimize Corp Dev - Victor", face Victor, tavus-gpt-5.6-terra). Deck:
 `builder/public/apex-assets/optimize-advisor-platform.pdf` (script pages only). FAQ knowledge:
 `builder/public/apex-assets/optimize-corpdev-faq.txt` (internal notes removed; figures aligned to
-the intro script). Tools: `record_advisor_profile` (Dealer Analysis Report inputs),
-`book_dar_review` (meeting 2 of 4), plus shared objection/handoff/complete tools.
+the intro script). Tools during the call: `book_dar_review` (meeting 2 of 4) and
+`request_advisor_handoff`, both passthrough and fire-and-forget. Dealer Analysis
+Report inputs are extracted from the transcript after the call.
 Guardrail `g31c7be8c1804`. Scripts: `apex-prompts/corpdev_*.md`.

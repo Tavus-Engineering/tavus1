@@ -2,7 +2,7 @@
 	position: relative;
 	width: 100%;
 	height: 100%;
-	background: #0f0f13;
+	background: var(--cvi-stage, #0f0f13);
 	overflow: hidden;
 }
 
@@ -33,7 +33,7 @@
 }
 
 .squareConnecting {
-	background-color: #412174;
+	background-color: var(--cvi-wait, #412174);
 	background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8' shape-rendering='crispEdges'><rect x='4' y='0' width='4' height='4' fill='black' fill-opacity='0.45'/><rect x='0' y='4' width='4' height='4' fill='black' fill-opacity='0.65'/><rect x='4' y='4' width='4' height='4' fill='black' fill-opacity='0.25'/></svg>");
 	background-size: 8px 8px;
 	background-repeat: repeat;
