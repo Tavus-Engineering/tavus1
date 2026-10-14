@@ -511,6 +511,18 @@ function Tasks({ state }) {
   );
 }
 
+const OFG_FIRMS = new Set(["optimize", "corpdev"]);
+
+function OfgLogo({ variant = "white" }) {
+  return (
+    <img
+      className="brand-logo"
+      src={variant === "blue" ? "/apex-assets/ofg-logo.png" : "/apex-assets/ofg-logo-white.png"}
+      alt="Optimize Financial Group"
+    />
+  );
+}
+
 // ---- Standalone call page -------------------------------------------------------
 // Tavus-hosted room rendered with the builder's vendored CVI call UI: the avatar's
 // face, and its presentation (brochure pages) as the main view when it shares.
@@ -542,10 +554,12 @@ function Room({ state, refresh }) {
   const feed = (state.feed ?? []).filter((e) => e.conversationId === active.conversationId).slice().reverse();
   const sc = active.firm === "invitationhomes" ? state.config?.scenarios?.[active.scenario] : null;
   const roomDeal = state.deals.find((d) => d.id === active.dealId);
+  const ofg = OFG_FIRMS.has(active.firm);
   return (
-    <div className="room">
+    <div className={`room${ofg ? " ofg" : ""}`}>
       <header className="topbar">
-        <div className="logo">{firmLabel.toUpperCase()} <span>· {active.prospectName}</span></div>
+        {ofg ? <OfgLogo /> : <div className="logo">{firmLabel.toUpperCase()} <span>· {active.prospectName}</span></div>}
+        {ofg && <span style={{ color: "#adc0d9", fontSize: 14 }}>{active.prospectName}</span>}
         <nav>
           <a href="#" onClick={(e) => { e.preventDefault(); setShowFeed((v) => !v); }}>{showFeed ? "Hide" : "Show"} AI activity</a>
           {sc ? <A href="/apex/training" target="_blank">Training records ↗</A> : <A href="/apex/crm" target="_blank">CRM ↗</A>}
@@ -629,11 +643,12 @@ function PublicMeet({ firm }) {
 
   const label = info?.label || "";
   const training = info?.audience === "trainee";
+  const ofg = firm === "optimize" || firm === "corpdev";
   const picked = training ? info.scenarios.find((x) => x.id === form.scenario) : null;
   if (phase === "call" && call?.conversationUrl) {
     return (
-      <div className="room">
-        <header className="topbar"><div className="logo">{label.toUpperCase()}{training && <span> · Training Simulator</span>}</div></header>
+      <div className={`room${ofg ? " ofg" : ""}`}>
+        <header className="topbar">{ofg ? <OfgLogo /> : <div className="logo">{label.toUpperCase()}{training && <span> · Training Simulator</span>}</div>}</header>
         <div className={`room-body ${picked ? "with-feed" : ""}`}>
           <div className="room-stage">
             <CVIProvider>
@@ -649,9 +664,9 @@ function PublicMeet({ firm }) {
   }
 
   return (
-    <div className="meet">
+    <div className={`meet${ofg ? " ofg" : ""}`}>
       <div className="meet-card">
-        <div className="meet-brand">{label || " "}</div>
+        {ofg ? <><OfgLogo variant="blue" /><hr className="brand-rule" /></> : <div className="meet-brand">{label || " "}</div>}
         {phase === "done" ? (
           <>
             <h1>Thanks for your time{form.firstname ? `, ${form.firstname}` : ""}.</h1>

@@ -114,6 +114,29 @@ label { font-size: 12px; font-weight: 600; color: var(--muted); display: block; 
 .meet-card { width: 100%; max-width: 460px; background: var(--panel); border-radius: 16px; padding: 28px; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
 .meet-card h1 { font-size: 22px; margin: 6px 0 0; }
 .meet-brand { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+.brand-logo { height: 42px; width: auto; display: block; }
+.brand-rule { height: 3px; width: 56px; background: #ae5605; border: 0; margin: 14px 0 0; }
+
+/* Optimize Financial Group — ofg.com navy, pale blue, and gold. */
+.ofg {
+  --brand: #2c3b4e;
+  --ink: #1c2632;
+  --accent: #ae5605;
+  --accent-soft: #f8f1e8;
+  --cvi-bg-a: #2c3b4e;
+  --cvi-bg-b: #1c2632;
+  --cvi-stage: #1c2632;
+  --cvi-wait: #3d5168;
+  font-family: Montserrat, ui-sans-serif, -apple-system, "Segoe UI", sans-serif;
+}
+.ofg .topbar { background: #2c3b4e; box-shadow: inset 0 -3px 0 #ae5605; }
+.ofg .topbar nav a { color: #adc0d9; }
+.ofg .topbar nav a.on, .ofg .topbar nav a:hover { color: #fff; }
+.room.ofg { background: #1c2632; }
+.meet.ofg { background: linear-gradient(165deg, #1c2632 0%, #2c3b4e 48%, #3d5168 100%); }
+.meet.ofg .meet-card h1 { font-family: Besley, Georgia, serif; font-weight: 500; font-size: 28px; letter-spacing: -0.02em; color: #1c2632; }
+.meet.ofg button.primary { background: #2c3b4e; border-color: #2c3b4e; }
+.meet.ofg button.primary:hover { background: #243244; }
 
 .room-stage { position: relative; }
 
