@@ -53,6 +53,11 @@ Anthropic key.
   with the `TAVUS_API_KEY` env var (rate-limited per slug/hour). The frontend
   `VisitorDemo` component (`?demo=` or `/d/` detection, before the auth gate)
   renders `DemoSite` standalone.
+  **Built-in demos** (`api/_builtin-demos.js`, `loadDemo()`): snapshots that
+  ship with the code (same shape as a POST /api/demos body) — checked before
+  Redis by demos/demo-launch/experience, so `/d/{slug}` works on every deploy
+  with no builder session or storage (rate limit + stats only when Redis is
+  attached). Current: `rc-negotiator` (builder/demos/ringcentral-ai-negotiator).
 - `builder/api/experience.js` — **experience arc data** (attendance +
   feedback). POST is public-with-credential: a real demo slug (visitor) or a
   builder session (preview); records merge under `exp:{conversation_id}`
