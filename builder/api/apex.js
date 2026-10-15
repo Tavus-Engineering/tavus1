@@ -109,8 +109,6 @@ async function launch(req, { firmKey, mode, meetingUrl, firstname, lastname, ema
           ? " During the brochure, present one page per turn and pause only at the six planned questions; each question is the last thing you say in that turn."
           : "") +
         (firmKey === "corpdev" ? ` The advisor's email (${email}) is on file, so the booking goes there.` : ""),
-      // Corp Dev is the only firm with a knowledge base (the FAQ). Speed skips the slower quality ranker.
-      ...(firmKey === "corpdev" ? { document_retrieval_strategy: "speed" } : {}),
       properties: { max_call_duration: isIH ? 1500 : firmKey === "apex" ? 2700 : 3600, participant_left_timeout: 60 },
     });
     await A.saveSession({
