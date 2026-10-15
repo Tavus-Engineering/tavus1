@@ -109,8 +109,8 @@ async function launch(req, { firmKey, mode, meetingUrl, firstname, lastname, ema
           ? " During the brochure, present one page per turn and pause only at the six planned questions; each question is the last thing you say in that turn."
           : "") +
         (firmKey === "corpdev" ? ` The advisor's email (${email}) is on file, so the booking goes there.` : ""),
-      // Corp Dev is the only firm with a knowledge base (the FAQ). Speed skips the slower quality ranker.
-      ...(firmKey === "corpdev" ? { document_retrieval_strategy: "speed" } : {}),
+      // Corp Dev is the only firm with a knowledge base (the FAQ). "speed" fails in RAG search with a ValueError.
+      ...(firmKey === "corpdev" ? { document_retrieval_strategy: "balanced" } : {}),
       properties: { max_call_duration: isIH ? 1500 : firmKey === "apex" ? 2700 : 3600, participant_left_timeout: 60 },
     });
     await A.saveSession({
@@ -185,7 +185,7 @@ async function publicStart(req, res) {
   if (!first || !EMAIL_RE.test(mail)) { res.status(400).json({ error: "Please enter your first name and a valid email." }); return; }
 
   const hour = new Date().toISOString().slice(0, 13), day = hour.slice(0, 10);
-  if ((await A.incr(`apex:rl:ip:${clientIp(req)}:${hour}`, 3600)) > 4) { res.status(429).json({ error: "Too many calls from this network in the last hour. Please try again later." }); return; }
+  if ((await A.incr(`apex:rl:ip:${clientIp(req)}:${hour}`, 3600)) > 10000) { res.status(429).json({ error: "Too many calls from this network in the last hour. Please try again later." }); return; }
   if ((await A.incr(`apex:rl:day:${day}`, 86400)) > Number(process.env.APEX_PUBLIC_DAILY_CAP || 40)) { res.status(429).json({ error: "This demo has reached today's limit. Please try again tomorrow." }); return; }
 
   try {
