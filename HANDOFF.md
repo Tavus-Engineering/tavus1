@@ -63,6 +63,6 @@ Invitation Homes: the "End scenario & score me" button sends the transcript to `
 
 ## Accounts and settings (names only, values are in Vercel)
 
-- Vercel env vars: `TAVUS_API_KEY`, Redis (`KV_REST_API_URL` / `UPSTASH_REDIS_REST_*`), `ANTHROPIC_API_KEY` (scorecards + post-call capture), `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
+- Vercel env vars: `TAVUS_API_KEY`, Redis (`KV_REST_API_URL` / `UPSTASH_REDIS_REST_*`), `ANTHROPIC_API_KEY` (scorecards + post-call capture), `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, optional `HUBSPOT_ACCESS_TOKEN` (HubSpot mirror, see APEX.md).
 - Google Calendar is connected to **tim@tavus.io** (Google Cloud project "Google Cal", OAuth client "Web client 1", redirect URI `https://tavus1.vercel.app/google/callback`). Invites go out from Tim's calendar. Testing with tim@tavus.io as the advisor email won't send an invite (Google doesn't invite the calendar owner); use another address.
 - Tavus account: the one whose API key is in Vercel; PAL Maker needs a login to it.

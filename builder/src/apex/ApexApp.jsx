@@ -240,6 +240,8 @@ function Console({ state, refresh }) {
                 <span>Shared storage (Redis)</span> <Check ok={cfg.store === "redis"} label={cfg.store} />
                 <span>Google Calendar</span>{" "}
                 {cfg.google ? <Check ok label="connected" /> : cfg.googleConfigured ? <a href={API("google_auth")}>Connect</a> : <Check label="add Google keys" />}
+                <span>HubSpot</span>{" "}
+                {cfg.hubspot ? <button disabled={busy} onClick={() => call("hubspot_check")}>Check connection</button> : <Check label="add HUBSPOT_ACCESS_TOKEN" />}
                 {Object.entries(cfg.firms || {}).map(([k, f]) => (
                   <React.Fragment key={k}><span>{f.label} avatar</span> <span className="pill">{f.palId || "not set"}</span></React.Fragment>
                 ))}

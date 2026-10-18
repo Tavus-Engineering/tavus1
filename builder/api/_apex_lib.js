@@ -3,10 +3,12 @@
    tool calls land here: objections, discovery answers, booking (Google
    Calendar), deal-stage change, advisor handoff — all written to a small
    HubSpot-shaped CRM sandbox in Redis. Everything lives under `apex:` keys,
-   so it can never touch the builder's own data.
+   so it can never touch the builder's own data. With HUBSPOT_ACCESS_TOKEN set,
+   every sandbox write for a live prospect is mirrored into a real HubSpot portal.
    Underscore prefix keeps Vercel from deploying this file as a function. */
 
 import crypto from "node:crypto";
+import * as HS from "./_hubspot.js";
 
 // ---- storage ----------------------------------------------------------------
 // Upstash REST when attached (production), in-process Map otherwise (local dev).
@@ -343,6 +345,7 @@ export async function moveStage(dealId, to, source = "ai") {
   if (deal.stage === to) return;
   await push(K.patches(dealId), { at: now(), stage: to });
   await addActivity(dealId, { kind: "stage", id: newId("act"), at: now(), source, from: deal.stage, to });
+  await mirror(dealId, "deal stage", (ids) => HS.updateDeal(ids.dealId, { stage: to }));
 }
 
 export async function updateProps(dealId, props, source = "ai") {
@@ -350,6 +353,7 @@ export async function updateProps(dealId, props, source = "ai") {
   if (!Object.keys(clean).length) return;
   await push(K.patches(dealId), { at: now(), props: clean });
   await addActivity(dealId, { kind: "property", id: newId("act"), at: now(), source, changed: Object.keys(clean) });
+  await mirror(dealId, "deal properties", (ids) => HS.updateDeal(ids.dealId, { props: clean, labels: hubspotLabels() }));
 }
 
 export async function logObjection(dealId, category, detail, source = "ai") {
@@ -357,14 +361,68 @@ export async function logObjection(dealId, category, detail, source = "ai") {
   // Roll every objection so far into the custom "Client Objections" property.
   const rollup = (await getActivity(dealId)).filter((a) => a.kind === "objection").map((o) => `• [${categoryLabel(o.category)}] ${o.detail}`).join("\n");
   await push(K.patches(dealId), { at: now(), props: { client_objections: rollup } });
+  await mirror(dealId, "objections", (ids) => HS.updateDeal(ids.dealId, { props: { client_objections: rollup }, labels: hubspotLabels() }));
 }
 
-export const addNote = (dealId, title, body, tags = [], source = "ai") =>
-  addActivity(dealId, { kind: "note", id: newId("note"), at: now(), source, title, body, tags });
-export const addTask = (dealId, title, body, dueAt, source = "ai") =>
-  addActivity(dealId, { kind: "task", id: newId("task"), at: now(), source, title, body, dueAt, status: "open" });
-export const addMeeting = (dealId, m, source = "ai") =>
-  addActivity(dealId, { kind: "meeting", id: newId("mtg"), at: now(), source, ...m });
+export async function addNote(dealId, title, body, tags = [], source = "ai") {
+  await addActivity(dealId, { kind: "note", id: newId("note"), at: now(), source, title, body, tags });
+  await mirror(dealId, "note", (ids) => HS.createNote(ids, { title, body }));
+}
+export async function addTask(dealId, title, body, dueAt, source = "ai") {
+  await addActivity(dealId, { kind: "task", id: newId("task"), at: now(), source, title, body, dueAt, status: "open" });
+  await mirror(dealId, "task", (ids) => HS.createTask(ids, { title, body, dueAt }));
+}
+export async function addMeeting(dealId, m, source = "ai") {
+  await addActivity(dealId, { kind: "meeting", id: newId("mtg"), at: now(), source, ...m });
+  await mirror(dealId, "meeting", (ids) => HS.createMeeting(ids, m));
+}
+
+// ---- HubSpot mirror ------------------------------------------------------------
+// Only deals created for a live prospect (launch) have a HubSpot twin; seed data and
+// training sessions stay local. A HubSpot failure is logged to the feed and never
+// breaks the call, the tool reply, or the post-call capture.
+
+const hsKey = (dealId) => `apex:hs:${dealId}`;
+export const hubspotConfigured = HS.configured;
+
+async function mirror(dealId, what, fn) {
+  if (!HS.configured()) return;
+  const ids = await getJSON(hsKey(dealId));
+  if (!ids) return;
+  try { await fn(ids); }
+  catch (e) { await feed({ type: "error", title: `HubSpot ${what} sync failed`, detail: e.message }); }
+}
+
+// Every deal property the calls can fill, by sandbox key.
+export const hubspotLabels = () => ({
+  ...ADVISOR_FIELDS, ...PROFILE_FIELDS, ...APEX_DISCOVERY_FIELDS,
+  client_objections: "Client objections",
+  discovery_summary: "AI call summary",
+});
+
+export async function hubspotSyncProspect(contact, deal) {
+  if (!HS.configured()) return;
+  try {
+    const ids = await HS.createContactAndDeal({ contact, deal });
+    await setJSON(hsKey(deal.id), ids);
+    await feed({ type: "tool", title: "HubSpot contact and deal created", detail: (await HS.dealUrl(ids.dealId)) || `Deal ${ids.dealId}` });
+  } catch (e) {
+    await feed({ type: "error", title: "HubSpot prospect sync failed", detail: e.message });
+  }
+}
+
+/* Logs the finished call, with its transcript, on the HubSpot contact and deal. */
+export async function hubspotLogCall(s, transcript) {
+  const firm = firmOf(s);
+  const who = s.firm === "corpdev" ? "ADVISOR" : "PROSPECT";
+  const lines = transcript
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => `${m.role === "user" ? who : s.firm === "apex" ? "APEX" : "VICTOR"}: ${String(m.content || "").trim()}`);
+  if (!lines.length) return;
+  await mirror(s.dealId, "call log", (ids) => HS.createCall(ids, { title: `Tavus AI video call: ${firm.label}`, lines, startedAt: s.startedAt }));
+}
+
+export const hubspotCheck = () => HS.check(hubspotLabels());
 
 export async function createProspect({ firstname, lastname = "", email, amount = 250000, firm = "apex", product }) {
   const f = FIRMS[firm] || FIRMS.apex;
