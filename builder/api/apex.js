@@ -4,7 +4,7 @@ import * as A from "./_apex_lib.js";
 /* Apex Wealth demo (/apex) — one function, routed by ?op=, so the demo adds a
    single serverless function to the project.
 
-   Builder session required:  state, start, end, reset, google_auth
+   Builder session required:  state, start, end, reset, google_auth, hubspot_check
    Public (Tavus calls these): tool (known-conversation + optional HMAC),
                                webhook (conversation callbacks / guardrails),
                                google_callback (one-time state token)
@@ -47,6 +47,7 @@ export default async function handler(req, res) {
       case "end": return await end(req, res);
       case "reset": return await reset(req, res);
       case "google_auth": return await googleAuth(req, res);
+      case "hubspot_check": return await hubspotCheck(req, res);
       default: res.status(404).json({ error: `Unknown op "${op}"` });
     }
   } catch (e) {
@@ -73,6 +74,7 @@ async function state(req, res) {
       tavus: !!process.env.TAVUS_API_KEY,
       google: await A.googleConnected(),
       googleConfigured: A.googleConfigured(),
+      hubspot: A.hubspotConfigured(),
       firms: Object.fromEntries(Object.entries(A.FIRMS).map(([k, f]) => [k, { label: f.label, palId: f.palId }])),
       profileFields: A.PROFILE_FIELDS,
       advisorFields: A.ADVISOR_FIELDS,
@@ -92,6 +94,8 @@ async function launch(req, { firmKey, mode, meetingUrl, firstname, lastname, ema
   await A.ensureSeeded();
   const { contact, deal } = await A.createProspect({ firstname, lastname, email, firm: firmKey, ...(isIH ? { amount: 0, product: A.IH_SCENARIOS[sc].label } : {}) });
   const name = `${firstname} ${lastname}`.trim();
+  // Runs alongside the conversation create so HubSpot never delays the call starting.
+  const hubspot = isIH ? null : A.hubspotSyncProspect(contact, deal);
   try {
     if (inZoom) await A.ensureConferencing(firm.palId);
     const convo = await A.createConversation({
@@ -126,8 +130,10 @@ async function launch(req, { firmKey, mode, meetingUrl, firstname, lastname, ema
       detail: inZoom ? meetingUrl : isPublic ? email : "Standalone call opened in the browser",
       conversationId: convo.conversation_id,
     });
+    await hubspot;
     return { conversationId: convo.conversation_id, conversationUrl: inZoom ? null : convo.conversation_url, dealId: deal.id };
   } catch (e) {
+    await hubspot;
     await A.feed({ type: "error", title: "Could not start conversation", detail: e.message });
     throw e;
   }
@@ -307,6 +313,7 @@ async function webhook(req, res) {
           else if (s.firm === "optimize") await A.captureOptimizeCall(s, t);
           else await A.captureApexCall(s, t);
         } catch (e) { await A.feed({ type: "error", title: "Post-call capture failed", detail: e.message, conversationId: id }); }
+        await A.hubspotLogCall(s, t);
       }
       // Training call that ended without a scorecard: grade it now from Tavus's transcript.
       if (s.firm === "invitationhomes" && firstDelivery && !(await A.getDeal(s.dealId))?.props?.overall_score) {
@@ -326,6 +333,20 @@ async function webhook(req, res) {
       }
   }
   res.status(200).json({ ok: true });
+}
+
+// ---- HubSpot ----------------------------------------------------------------
+
+async function hubspotCheck(req, res) {
+  if (!A.hubspotConfigured()) { res.status(400).json({ error: "Add HUBSPOT_ACCESS_TOKEN to the Vercel project first." }); return; }
+  try {
+    const r = await A.hubspotCheck();
+    await A.feed({ type: "system", title: "HubSpot connected", detail: `Portal ${r.portalId ?? "unknown"}; ${r.properties} Tavus deal properties ready.` });
+    res.status(200).json(r);
+  } catch (e) {
+    await A.feed({ type: "error", title: "HubSpot check failed", detail: e.message });
+    res.status(502).json({ error: e.message });
+  }
 }
 
 // ---- Google Calendar connect ------------------------------------------------

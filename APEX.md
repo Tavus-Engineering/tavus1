@@ -25,6 +25,17 @@ redirect URI `https://tavus1.vercel.app/google/callback`, Calendar API on),
 then click Connect on the console. Optional: `APEX_TOOL_SECRET` to enforce tool-call
 signatures, `APEX_PAL_ID` / `APEX_FACE_ID` overrides.
 
+HubSpot (optional): set `HUBSPOT_ACCESS_TOKEN` (a private-app token with
+`crm.objects.contacts.read/write`, `crm.objects.deals.read/write`,
+`crm.schemas.deals.read/write`), then click "Check connection" on the console.
+Every Apex / Optimize / Corp Dev call then mirrors into HubSpot: contact + deal
+at call start (default pipeline), meeting + task from booking, task + note from
+handoff during the call, and after the call the extracted fields (deal
+properties `tavus_*`, group "Tavus AI call"), objections, summary note, stage
+move to "Qualified to buy", and a logged call with the full transcript. Seed
+data and Invitation Homes training stay local. HubSpot failures show in the
+feed and never block the call.
+
 ## Optimize mode (brochure walkthrough + initial meeting)
 
 Pick "Optimize" on the console. Second PAL "Optimize Senior Portfolio Manager"
