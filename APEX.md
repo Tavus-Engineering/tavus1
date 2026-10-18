@@ -25,7 +25,8 @@ redirect URI `https://tavus1.vercel.app/google/callback`, Calendar API on),
 then click Connect on the console. Optional: `APEX_TOOL_SECRET` to enforce tool-call
 signatures, `APEX_PAL_ID` / `APEX_FACE_ID` overrides.
 
-HubSpot (optional): set `HUBSPOT_ACCESS_TOKEN` (a private-app token with
+HubSpot (optional): set `HUBSPOT_ACCESS_TOKEN` to a HubSpot service key
+(Development → Keys → Service keys; older portals: a private-app token) with
 `crm.objects.contacts.read/write`, `crm.objects.deals.read/write`,
 `crm.schemas.deals.read/write`), then click "Check connection" on the console.
 Every Apex / Optimize / Corp Dev call then mirrors into HubSpot: contact + deal

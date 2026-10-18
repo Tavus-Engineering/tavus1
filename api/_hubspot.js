@@ -1,5 +1,5 @@
 /* HubSpot CRM client for the Apex demos. Inert unless HUBSPOT_ACCESS_TOKEN (a
-   private-app token) is set. Custom call data lands in deal properties named
+   service key, or a legacy private-app token) is set. Custom call data lands in deal properties named
    tavus_<field>, created on first use in a "Tavus AI call" property group. */
 
 const BASE = "https://api.hubapi.com";
