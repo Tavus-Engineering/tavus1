@@ -11,6 +11,7 @@ export default defineConfig({
         server.middlewares.use((req, _res, next) => {
           const url = req.url?.split("?")[0] || "";
           if (url === "/apex" || url.startsWith("/apex/") || url.startsWith("/meet/")) req.url = "/apex/index.html";
+          else if (url === "/maya" || url.startsWith("/maya/")) req.url = "/maya/index.html";
           next();
         });
       },
@@ -20,11 +21,13 @@ export default defineConfig({
     // daily-js is one legitimately large chunk; hush Vite's 500kB grumble so
     // real problems stand out in build logs.
     chunkSizeWarningLimit: 1200,
-    // Two pages: the builder (/) and the Apex Wealth demo console (/apex).
+    // Pages: the builder (/), the Apex Wealth demo console (/apex) and the
+    // MoneyMaya application demo (/maya).
     rollupOptions: {
       input: {
         main: resolve(__dirname, "index.html"),
         apex: resolve(__dirname, "apex/index.html"),
+        maya: resolve(__dirname, "maya/index.html"),
       },
     },
   },

@@ -22,6 +22,14 @@
       "destination": "/apex/index.html"
     },
     {
+      "source": "/maya",
+      "destination": "/maya/index.html"
+    },
+    {
+      "source": "/maya/:path*",
+      "destination": "/maya/index.html"
+    },
+    {
       "source": "/d/:slug",
       "destination": "/index.html"
     }

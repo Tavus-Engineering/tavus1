@@ -11,6 +11,7 @@ const run = (cmd, args, opts = {}) => new Promise((res, rej) => {
 try {
   execSync("node tools/parse-objectives.test.mjs", { stdio: "inherit" });
   execSync("node tools/api-kinds.test.mjs", { stdio: "inherit" });
+  execSync("node tools/maya.test.mjs", { stdio: "inherit" });
   await run("npm", ["run", "build"]);
   const server = spawn("node", ["tools/smoke-serve.mjs"], { stdio: "inherit" });
   await new Promise((r) => setTimeout(r, 800));
