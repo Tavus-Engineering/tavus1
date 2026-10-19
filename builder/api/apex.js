@@ -48,6 +48,7 @@ export default async function handler(req, res) {
       case "reset": return await reset(req, res);
       case "google_auth": return await googleAuth(req, res);
       case "hubspot_check": return await hubspotCheck(req, res);
+      case "recapture": return await recapture(req, res);
       default: res.status(404).json({ error: `Unknown op "${op}"` });
     }
   } catch (e) {
@@ -308,11 +309,7 @@ async function webhook(req, res) {
       // Tavus may retry a slow webhook; run post-call capture/grading once per conversation.
       const firstDelivery = await A.setOnce(`apex:postcall:${id}`);
       if (firstDelivery && (s.firm === "corpdev" || s.firm === "optimize" || s.firm === "apex")) {
-        try {
-          if (s.firm === "corpdev") await A.captureAdvisorCall(s, t);
-          else if (s.firm === "optimize") await A.captureOptimizeCall(s, t);
-          else await A.captureApexCall(s, t);
-        } catch (e) { await A.feed({ type: "error", title: "Post-call capture failed", detail: e.message, conversationId: id }); }
+        await A.capturePostCall(s, t);
         await A.hubspotLogCall(s, t);
       }
       // Training call that ended without a scorecard: grade it now from Tavus's transcript.
@@ -336,6 +333,15 @@ async function webhook(req, res) {
 }
 
 // ---- HubSpot ----------------------------------------------------------------
+
+/* Re-runs post-call capture for a finished call, from Tavus's stored transcript. */
+async function recapture(req, res) {
+  const id = String(req.body?.conversationId || "");
+  const s = await A.getSession(id);
+  if (!s) { res.status(404).json({ error: "No call session with that conversation id." }); return; }
+  const out = await A.capturePostCall(s, await A.fetchTranscript(id));
+  res.status(out.ok ? 200 : 502).json(out);
+}
 
 async function hubspotCheck(req, res) {
   if (!A.hubspotConfigured()) { res.status(400).json({ error: "Add HUBSPOT_ACCESS_TOKEN to the Vercel project first." }); return; }

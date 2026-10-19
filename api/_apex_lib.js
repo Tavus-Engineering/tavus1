@@ -419,8 +419,7 @@ export async function hubspotSyncProspect(contact, deal) {
 export async function hubspotLogCall(s, transcript) {
   const firm = firmOf(s);
   const who = s.firm === "corpdev" ? "ADVISOR" : "PROSPECT";
-  const lines = transcript
-    .filter((m) => m.role === "user" || m.role === "assistant")
+  const lines = spoken(transcript)
     .map((m) => `${m.role === "user" ? who : s.firm === "apex" ? "APEX" : "VICTOR"}: ${String(m.content || "").trim()}`);
   if (!lines.length) return;
   await mirror(s.dealId, "call log", (ids) => HS.createCall(ids, { title: `Tavus AI video call: ${firm.label}`, lines, startedAt: s.startedAt }));
@@ -835,17 +834,25 @@ const APEX_DISCOVERY_FIELDS = {
   retirement_plans: "Retirement plans",
 };
 
+// A reply cut off by max_tokens, or wrapped in prose, falls through to the next model.
 async function extractJson(system, user) {
   const { default: Anthropic } = await import("@anthropic-ai/sdk");
   const client = new Anthropic();
-  let msg;
+  const errors = [];
   for (const model of ["claude-opus-4-8", "claude-haiku-4-5-20251001"]) {
-    try { msg = await client.messages.create({ model, max_tokens: 2000, system, messages: [{ role: "user", content: user }] }); break; }
-    catch (e) { if (model.startsWith("claude-haiku")) throw e; }
+    try {
+      const msg = await client.messages.create({ model, max_tokens: 8000, system, messages: [{ role: "user", content: user }] });
+      const text = msg.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+      try { return JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)); }
+      catch { throw new Error(`reply was not JSON (stop: ${msg.stop_reason})`); }
+    } catch (e) { errors.push(`${model}: ${e.message}`); }
   }
-  const text = msg.content.map((b) => b.text || "").join("");
-  return JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
+  throw new Error(errors.join("; "));
 }
+
+// Pacing cues the call page sends as user turns, e.g. "(continue)".
+const isCue = (m) => m.role === "user" && /^\([^)]*\)$/.test(String(m.content || "").trim()) && !/inaudible/i.test(m.content);
+const spoken = (transcript) => (transcript || []).filter((m) => (m.role === "user" || m.role === "assistant") && !isCue(m));
 
 /* What makes a lead hot, per firm. Hot deals skip ahead to "Hot Lead (Fast Track)"
    (HubSpot: "Decision maker bought-in", priority high); warm and cold stay at
@@ -860,7 +867,7 @@ const LEAD_RULES = {
 };
 
 async function captureTranscript(s, transcript, { fields, userLabel, assistantLabel, intro, valueHint, objectionCategories, summaryHint, leadRule, noteTitle, feedTitle }) {
-  const lines = transcript.filter((m) => m.role === "user" || m.role === "assistant").map((m) => `${m.role === "user" ? userLabel : assistantLabel}: ${String(m.content || "").trim()}`).filter((l) => l.length > 9);
+  const lines = spoken(transcript).map((m) => `${m.role === "user" ? userLabel : assistantLabel}: ${String(m.content || "").trim()}`).filter((l) => l.length > 9);
   if (!lines.some((l) => l.startsWith(userLabel))) return;
   const fieldList = Object.entries(fields).map(([k, l]) => `"${k}": ${l}`).join("\n");
   const booked = (await getActivity(s.dealId)).some((a) => a.kind === "meeting");
@@ -926,4 +933,27 @@ export function captureApexCall(s, transcript) {
     noteTitle: "Discovery Call Summary",
     feedTitle: (n) => `Discovery answers captured (${n} fields)`,
   });
+}
+
+/* Fields, lead rating and stage move for a finished call. A failure lands in the feed
+   and on the HubSpot deal, so a deal that never moved says why. */
+export async function capturePostCall(s, transcript) {
+  const run = { corpdev: captureAdvisorCall, optimize: captureOptimizeCall, apex: captureApexCall }[s.firm];
+  if (!run) return { ok: false, error: "No post-call capture for this firm." };
+  try {
+    await run(s, transcript);
+    return { ok: true };
+  } catch (e) {
+    await feed({ type: "error", title: "Post-call capture failed", detail: e.message, conversationId: s.conversationId });
+    await mirror(s.dealId, "note", (ids) => HS.createNote(ids, { title: "AI call rating failed", body: `${e.message}\nRetry it from the Apex console feed.` }));
+    return { ok: false, error: e.message };
+  }
+}
+
+export async function fetchTranscript(conversationId) {
+  const r = await fetch(`${TAVUS}/conversations/${conversationId}?verbose=true`, { headers: tavusHeaders() });
+  if (!r.ok) throw new Error(`Tavus get conversation failed (${r.status})`);
+  const ev = ((await r.json()).events || []).find((e) => e.event_type === "application.transcription_ready");
+  if (!ev) throw new Error("Tavus has no transcript for this call yet.");
+  return ev.properties?.transcript ?? [];
 }
