@@ -372,7 +372,7 @@ function DealRecord({ id, state }) {
           <h1 style={{ fontSize: 18, margin: "4px 0" }}>{deal.name}</h1>
           <div className="muted">{money(deal.amount)} · {deal.product}</div>
           <div className="stagebar">
-            {state.stages.slice(0, 5).map((s, i) => (
+            {state.stages.filter((s) => s.id !== "closed_lost").map((s, i) => (
               <div key={s.id} className={i <= stageIdx && deal.stage !== "closed_lost" ? "on" : ""} title={s.label} />
             ))}
           </div>
