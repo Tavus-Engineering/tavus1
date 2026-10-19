@@ -269,6 +269,9 @@ function Console({ state, refresh }) {
                 <div className="t">{fmtTime(e.at)} · {e.type === "tool" ? "AI tool call" : e.type}</div>
                 <div className="title">{e.title}</div>
                 {e.detail && <pre>{e.detail}</pre>}
+                {e.title === "Post-call capture failed" && e.conversationId && (
+                  <button disabled={busy} onClick={() => call("recapture", { conversationId: e.conversationId })}>Retry capture</button>
+                )}
               </div>
             ))}
           </div>
