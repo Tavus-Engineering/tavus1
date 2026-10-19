@@ -28,6 +28,7 @@ async function hs(method, path, body) {
 const STAGE_MAP = {
   discovery_scheduled: "appointmentscheduled",
   discovery_completed: "qualifiedtobuy",
+  hot_lead: "decisionmakerboughtin",
   portfolio_design: "presentationscheduled",
   onboarding: "contractsent",
   closed_won: "closedwon",
@@ -113,6 +114,7 @@ async function ensureDealProperties(labels) {
 export async function updateDeal(dealId, { stage, props, labels }) {
   const properties = {};
   if (stage) properties.dealstage = stageFor(stage);
+  if (stage === "hot_lead") properties.hs_priority = "high";
   const known = Object.entries(props || {}).filter(([k]) => labels?.[k]);
   if (known.length) {
     await ensureDealProperties(Object.fromEntries(known.map(([k]) => [k, labels[k]])));

@@ -305,6 +305,7 @@ export const TRAINING_FIELDS = {
 export const STAGES = [
   { id: "discovery_scheduled", label: "Discovery Call Scheduled" },
   { id: "discovery_completed", label: "Discovery Call Completed" },
+  { id: "hot_lead", label: "Hot Lead (Fast Track)" },
   { id: "portfolio_design", label: "Portfolio Design Presented" },
   { id: "onboarding", label: "Implementation & Onboarding" },
   { id: "closed_won", label: "Closed Won" },
@@ -398,6 +399,9 @@ export const hubspotLabels = () => ({
   ...ADVISOR_FIELDS, ...PROFILE_FIELDS, ...APEX_DISCOVERY_FIELDS,
   client_objections: "Client objections",
   discovery_summary: "AI call summary",
+  lead_temperature: "Lead temperature (hot / warm / cold)",
+  lead_reason: "Why this lead temperature",
+  fields_captured: "Fields captured on the call",
 });
 
 export async function hubspotSyncProspect(contact, deal) {
@@ -843,39 +847,57 @@ async function extractJson(system, user) {
   return JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
 }
 
-async function captureTranscript(s, transcript, { fields, userLabel, assistantLabel, noteTitle, feedTitle }) {
+/* What makes a lead hot, per firm. Hot deals skip ahead to "Hot Lead (Fast Track)"
+   (HubSpot: "Decision maker bought-in", priority high); warm and cold stay at
+   "Discovery Call Completed" with the temperature recorded on the deal. */
+const LEAD_RULES = {
+  corpdev:
+    "hot: book of about $50M or more (or a strong case for an exception), a clear reason to leave their dealer within the next year, agreed to the follow-up meeting, and no unresolved deal-breaker. " +
+    "cold: not looking to move, a book far below $50M with no case for an exception, or declined any next step. Otherwise warm.",
+  client:
+    "hot: meaningful investable assets they are ready to move, a near-term goal or trigger, agreed to the next meeting, and engaged throughout. " +
+    "cold: nothing to invest, no real interest, or declined any next step. Otherwise warm.",
+};
+
+async function captureTranscript(s, transcript, { fields, userLabel, assistantLabel, intro, valueHint, objectionCategories, summaryHint, leadRule, noteTitle, feedTitle }) {
   const lines = transcript.filter((m) => m.role === "user" || m.role === "assistant").map((m) => `${m.role === "user" ? userLabel : assistantLabel}: ${String(m.content || "").trim()}`).filter((l) => l.length > 9);
   if (!lines.some((l) => l.startsWith(userLabel))) return;
   const fieldList = Object.entries(fields).map(([k, l]) => `"${k}": ${l}`).join("\n");
+  const booked = (await getActivity(s.dealId)).some((a) => a.kind === "meeting");
   const system =
-    "You extract CRM data from a sales-call transcript. Use only what the prospect actually said; leave a field as an empty string if it never came up. Keep values short, in their terms. " +
-    'Reply with ONLY JSON: {"fields": {<field>: string}, "objections": [{"category": one of fees|guaranteed_returns|recession_risk|account_setup|proprietary_products|transfers_in_kind|compensation|book_ownership|licensing|transition_effort|regulatory|firm_stability|other, "detail": one sentence}], "summary": "3-5 sentences: goals, key facts, concerns, next step booked"}';
-  const out = await extractJson(system, `FIELDS:\n${fieldList}\n\nTRANSCRIPT:\n${lines.join("\n").slice(-40000)}`);
+    `${intro} Use only what the ${userLabel} actually said; leave a field as an empty string if it never came up. Keep values short, in their terms${valueHint ? ` (e.g. ${valueHint})` : ""}. ` +
+    `Rate the lead from the transcript. ${leadRule} ` +
+    `Reply with ONLY JSON: {"fields": {<field>: string}, "objections": [{"category": one of ${objectionCategories}|other, "detail": one sentence}], "summary": "3-5 sentences: ${summaryHint}", "lead": {"temperature": "hot" | "warm" | "cold", "reason": "one sentence citing what they said"}}`;
+  const out = await extractJson(system, `FIELDS:\n${fieldList}\n\nNEXT MEETING BOOKED ON THE CALL: ${booked ? "yes" : "no"}\n\nTRANSCRIPT:\n${lines.join("\n").slice(-40000)}`);
+
   const props = Object.fromEntries(Object.entries(out.fields || {}).filter(([k, v]) => fields[k] && str(v)).map(([k, v]) => [k, str(v)]));
+  const filled = Object.keys(props).length;
+  const temp = ["hot", "warm", "cold"].includes(str(out.lead?.temperature).toLowerCase()) ? str(out.lead.temperature).toLowerCase() : "";
   if (out.summary) props.discovery_summary = str(out.summary);
+  if (temp) { props.lead_temperature = temp; props.lead_reason = str(out.lead?.reason); }
+  props.fields_captured = `${filled} of ${Object.keys(fields).length}`;
   await updateProps(s.dealId, props);
   for (const o of out.objections || []) if (o?.detail) await logObjection(s.dealId, str(o.category) || "other", str(o.detail));
-  await moveStage(s.dealId, "discovery_completed");
-  await addNote(s.dealId, noteTitle, str(out.summary), ["discovery", "ai-call"]);
-  const filled = Object.keys(props).length - (out.summary ? 1 : 0);
-  await feed({ type: "tool", title: feedTitle(filled), detail: Object.entries(props).filter(([k]) => fields[k]).map(([k, v]) => `${fields[k]}: ${v}`).join("\n"), conversationId: s.conversationId });
+  await moveStage(s.dealId, temp === "hot" ? "hot_lead" : "discovery_completed");
+  await addNote(s.dealId, noteTitle, [str(out.summary), temp && `\nLead: ${temp.toUpperCase()}. ${str(out.lead?.reason)}`].filter(Boolean).join("\n"), ["discovery", "ai-call"]);
+  await feed({ type: "tool", title: `${feedTitle(filled)}${temp ? ` · ${temp} lead` : ""}`, detail: Object.entries(props).filter(([k]) => fields[k]).map(([k, v]) => `${fields[k]}: ${v}`).join("\n"), conversationId: s.conversationId });
 }
 
-export async function captureAdvisorCall(s, transcript) {
-  const lines = transcript.filter((m) => m.role === "user" || m.role === "assistant").map((m) => `${m.role === "user" ? "ADVISOR" : "VICTOR"}: ${String(m.content || "").trim()}`).filter((l) => l.length > 9);
-  if (!lines.some((l) => l.startsWith("ADVISOR"))) return;
-  const fields = Object.entries(ADVISOR_FIELDS).map(([k, l]) => `"${k}": ${l}`).join("\n");
-  const system =
-    "You extract CRM data from an advisor-recruiting call transcript. Use only what the ADVISOR actually said; leave a field as an empty string if it never came up. Keep values short, in the advisor's terms (e.g. \"$80M\", \"about 1%\", \"6x\"). " +
-    'Reply with ONLY JSON: {"fields": {<field>: string}, "objections": [{"category": one of fees|compensation|proprietary_products|transfers_in_kind|book_ownership|licensing|transition_effort|regulatory|firm_stability|other, "detail": one sentence}], "summary": "3-5 sentences: book, motivation for looking, key concerns, next step booked"}';
-  const out = await extractJson(system, `FIELDS:\n${fields}\n\nTRANSCRIPT:\n${lines.join("\n").slice(-40000)}`);
-  const props = Object.fromEntries(Object.entries(out.fields || {}).filter(([k, v]) => ADVISOR_FIELDS[k] && str(v)).map(([k, v]) => [k, str(v)]));
-  if (out.summary) props.discovery_summary = str(out.summary);
-  await updateProps(s.dealId, props);
-  for (const o of out.objections || []) if (o?.detail) await logObjection(s.dealId, str(o.category) || "other", str(o.detail));
-  await moveStage(s.dealId, "discovery_completed");
-  await addNote(s.dealId, "Intro Call Summary", str(out.summary), ["discovery", "ai-call"]);
-  await feed({ type: "tool", title: `Dealer Analysis inputs captured (${Object.keys(props).length - (out.summary ? 1 : 0)} fields)`, detail: Object.entries(props).filter(([k]) => ADVISOR_FIELDS[k]).map(([k, v]) => `${ADVISOR_FIELDS[k]}: ${v}`).join("\n"), conversationId: s.conversationId });
+const CLIENT_OBJECTIONS = "fees|guaranteed_returns|recession_risk|account_setup|proprietary_products|transfers_in_kind|compensation|book_ownership|licensing|transition_effort|regulatory|firm_stability";
+
+export function captureAdvisorCall(s, transcript) {
+  return captureTranscript(s, transcript, {
+    fields: ADVISOR_FIELDS,
+    userLabel: "ADVISOR",
+    assistantLabel: "VICTOR",
+    intro: "You extract CRM data from an advisor-recruiting call transcript.",
+    valueHint: '"$80M", "about 1%", "6x"',
+    objectionCategories: "fees|compensation|proprietary_products|transfers_in_kind|book_ownership|licensing|transition_effort|regulatory|firm_stability",
+    summaryHint: "book, motivation for looking, key concerns, next step booked",
+    leadRule: LEAD_RULES.corpdev,
+    noteTitle: "Intro Call Summary",
+    feedTitle: (n) => `Dealer Analysis inputs captured (${n} fields)`,
+  });
 }
 
 export function captureOptimizeCall(s, transcript) {
@@ -883,6 +905,10 @@ export function captureOptimizeCall(s, transcript) {
     fields: PROFILE_FIELDS,
     userLabel: "PROSPECT",
     assistantLabel: "VICTOR",
+    intro: "You extract CRM data from a sales-call transcript.",
+    objectionCategories: CLIENT_OBJECTIONS,
+    summaryHint: "goals, key facts, concerns, next step booked",
+    leadRule: LEAD_RULES.client,
     noteTitle: "Initial Meeting Summary",
     feedTitle: (n) => `Client profile captured (${n} fields)`,
   });
@@ -893,6 +919,10 @@ export function captureApexCall(s, transcript) {
     fields: APEX_DISCOVERY_FIELDS,
     userLabel: "PROSPECT",
     assistantLabel: "APEX",
+    intro: "You extract CRM data from a sales-call transcript.",
+    objectionCategories: CLIENT_OBJECTIONS,
+    summaryHint: "goals, key facts, concerns, next step booked",
+    leadRule: LEAD_RULES.client,
     noteTitle: "Discovery Call Summary",
     feedTitle: (n) => `Discovery answers captured (${n} fields)`,
   });
