@@ -50,6 +50,24 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   await wait(1100);
   assert.equal(sent.length, 3);
 
+  // A nudge that went stale while waiting is dropped, not sent.
+  let zipStillBad = true;
+  ch.onAppMessage({ data: { event_type: "conversation.started_speaking", properties: { role: "pal" } } });
+  ch.nudge("ZIP is short", () => zipStillBad);
+  zipStillBad = false; // fixed while Maya was still talking
+  ch.onAppMessage({ data: { event_type: "conversation.stopped_speaking", properties: { role: "pal" } } });
+  await wait(1100);
+  assert.equal(sent.length, 3, "stale nudge dropped");
+  assert.equal(logs.at(-1).kind, "skip");
+
+  // Speech on either side counts as activity (resets the idle check-in).
+  let activity = 0;
+  ch.onActivity = () => activity++;
+  ch.onAppMessage({ data: { event_type: "conversation.started_speaking", properties: { role: "user" } } });
+  ch.onAppMessage({ data: { event_type: "conversation.stopped_speaking", properties: { role: "user" } } });
+  ch.onAppMessage({ data: { event_type: "conversation.utterance", properties: { role: "user", speech: "hi" } } });
+  assert.equal(activity, 2, "start/stop speaking are activity, utterances aren't double-counted");
+
   ch.reset();
   ch.note("after leave");
   assert.equal(sent.length, 3, "nothing is sent after the call ends");

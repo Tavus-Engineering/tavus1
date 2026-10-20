@@ -120,4 +120,5 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.5 Inter, system-ui
 .maya-page .feed .note .k { color: #8fb8a6; }
 .maya-page .feed .nudge .k { color: #f2b33d; }
 .maya-page .feed .sys .k { color: #7aa7ff; }
+.maya-page .feed .skip { opacity: .55; text-decoration: line-through; }
 .maya-page .feed .off { opacity: .5; }

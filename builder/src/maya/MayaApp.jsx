@@ -149,11 +149,13 @@ export default function MayaApp() {
     idleTimer.current = setTimeout(() => {
       if (!channel.connected) return;
       idleNudged.current[s] = true;
-      channel.nudge(`The applicant has been on the ${STEP_NAMES[s - 1]} step for about 30 seconds without finishing. They may be stuck or hesitant. Check in gently.`);
+      channel.nudge(`The applicant has been on the ${STEP_NAMES[s - 1]} step for about 30 seconds without finishing. They may be stuck or hesitant. Check in gently.`, () => stepRef.current === s);
     }, IDLE_MS);
   }, [channel]);
 
   useEffect(() => { armIdle(); return () => clearTimeout(idleTimer.current); }, [step, armIdle]);
+  // Talking counts as activity: a 30s chat with Maya on one step isn't being stuck.
+  useEffect(() => { channel.onActivity = armIdle; }, [channel, armIdle]);
 
   const setField = (f, val) => {
     valuesRef.current = { ...valuesRef.current, [f]: val };
@@ -176,7 +178,7 @@ export default function MayaApp() {
     else if (speakOnError) {
       // Give them a beat to fix it themselves before Maya says anything.
       errorTimers.current[f] = setTimeout(() => {
-        if (RULES[f](valuesRef.current)) channel.nudge(`An error is showing on the form: ${error}. Help the applicant fix it, briefly.`);
+        if (RULES[f](valuesRef.current)) channel.nudge(`An error is showing on the form: ${error}. Help the applicant fix it, briefly.`, () => !!RULES[f](valuesRef.current));
       }, ERROR_GRACE_MS);
     }
     return error;
@@ -192,7 +194,8 @@ export default function MayaApp() {
   const next = () => {
     const errs = STEP_FIELDS[step].map((f) => check(f, { speakOnError: false })).filter(Boolean);
     if (errs.length) {
-      channel.nudge(`The applicant tried to continue but the form blocked them: ${errs.join("; ")}. Help them fix it, briefly.`);
+      const blocked = STEP_FIELDS[step];
+      channel.nudge(`The applicant tried to continue but the form blocked them: ${errs.join("; ")}. Help them fix it, briefly.`, () => blocked.some((f) => RULES[f](valuesRef.current)));
       return;
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -200,7 +203,7 @@ export default function MayaApp() {
       const n = step + 1;
       setStep(n);
       stepRef.current = n;
-      channel.nudge(`Applicant finished the previous step and is now on step ${n} of 4: ${stepName(n)}. Briefly tell them what this step is for and why it's asked.`);
+      channel.nudge(`Applicant finished the previous step and is now on step ${n} of 4: ${stepName(n)}. Briefly tell them what this step is for and why it's asked.`, () => stepRef.current === n);
       return;
     }
     setStep(5);
